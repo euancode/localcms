@@ -381,8 +381,12 @@
 
       <!-- PUBLISH / SUBMIT -->
       <div class="a-section" id="a-publish">
-        <h2 class="a-heading">Submit for Publish</h2>
-        <p style="font-size:13px;color:#a0aec0;margin-bottom:20px;line-height:1.6">Edit content locally until you're happy. All of the site's content lives in a single <code>content.json</code> file — publishing just means replacing that file on the server. Use this screen to get your changes there, including any uploaded images.</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:12px">
+          <h2 class="a-heading" style="margin:0">Submit for Publish</h2>
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="checkServerChanges(false)">🔄 Check for server changes</button>
+        </div>
+        <p style="font-size:13px;color:#a0aec0;margin-bottom:16px;line-height:1.6">Edit content locally until you're happy. All of the site's content lives in a single <code>content.json</code> file — publishing just means replacing that file on the server. Use this screen to get your changes there, including any uploaded images.</p>
+        <div id="pubServerCheck" style="margin-bottom:16px"></div>
         <div class="publish-info">
           <div class="publish-row"><span class="publish-label">Current version</span><span class="publish-val" id="pubCurrentVer">—</span></div>
           <div class="publish-row"><span class="publish-label">Your changes</span><span class="publish-val" id="pubChangeSummary">—</span></div>
@@ -894,6 +898,51 @@
     }
     document.getElementById('pubChangesList').innerHTML = changesHtml;
     document.getElementById('pubEmail').value = state.adminEmail || '';
+    checkServerChanges(true);
+  }
+
+  async function checkServerChanges(silent) {
+    const el = document.getElementById('pubServerCheck');
+    if (!el) return;
+    if (!silent) el.innerHTML = `<div style="font-size:12px;color:#718096">Checking server for newer content…</div>`;
+    try {
+      const res = await fetch('./content.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('bad response');
+      const server = await res.json();
+      if (server.version > SITE_CONTENT.version) {
+        const newEntries = server.changelog.filter(c => c.v > SITE_CONTENT.version);
+        el.innerHTML = `<div style="background:#4a2c0a;border:1px solid #92400e;border-radius:10px;padding:14px 16px">
+          <div style="font-weight:700;color:#fbbf24;margin-bottom:6px">⚠️ Server has newer content</div>
+          <div style="font-size:13px;color:#e2e8f0;margin-bottom:8px">The live site is now at <b>v${server.version}</b> (published ${formatDate(server.publishedAt)}) — you're editing from <b>v${SITE_CONTENT.version}</b>, loaded when this admin session started. Publishing now would overwrite those changes.</div>
+          ${newEntries.map(c => `<div style="font-size:12px;color:#a0aec0">• v${c.v}: ${escHtml(c.summary)}</div>`).join('')}
+          <button class="a-btn a-btn-primary a-btn-sm" style="margin-top:10px" onclick="syncWithServer()">Sync with server</button>
+        </div>`;
+      } else if (!silent) {
+        el.innerHTML = `<div style="font-size:12px;color:#718096">✅ Up to date — the server is still on v${server.version}, same as when you started editing.</div>`;
+      } else {
+        el.innerHTML = '';
+      }
+    } catch(e) {
+      el.innerHTML = silent ? '' : `<div style="font-size:12px;color:#718096">Couldn't reach the server to check — you may be offline.</div>`;
+    }
+  }
+
+  async function syncWithServer() {
+    if (!confirm('This discards any local unpublished edits and loads the latest published content from the server. Continue?')) return;
+    try {
+      const res = await fetch('./content.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('bad response');
+      const server = await res.json();
+      SITE_CONTENT = server;
+      try { localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(server)); } catch(e) {}
+      state = {...JSON.parse(JSON.stringify(server)), password: state.password, images: state.images, adminEmail: state.adminEmail || ''};
+      saveState();
+      initSite();
+      showAdminSection('publish');
+      showToast(`✅ Synced to v${server.version}`);
+    } catch(e) {
+      showToast('⚠️ Could not reach the server to sync');
+    }
   }
 
   function getExportJson() {
