@@ -374,7 +374,7 @@
       <!-- PUBLISH / SUBMIT -->
       <div class="a-section" id="a-publish">
         <h2 class="a-heading">Submit for Publish</h2>
-        <p style="font-size:13px;color:#a0aec0;margin-bottom:20px;line-height:1.6">Edit content locally until you're happy, then use this screen to send your changes to the site admin. They'll update the codebase and push a new published version — which appears automatically next time visitors open the site.</p>
+        <p style="font-size:13px;color:#a0aec0;margin-bottom:20px;line-height:1.6">Edit content locally until you're happy, then use this screen to send your changes — including any uploaded images — to the site admin. They'll update the codebase and push a new published version, which appears automatically next time visitors open the site.</p>
         <div class="publish-info">
           <div class="publish-row"><span class="publish-label">Current version</span><span class="publish-val" id="pubCurrentVer">—</span></div>
           <div class="publish-row"><span class="publish-label">Your changes</span><span class="publish-val" id="pubChangeSummary">—</span></div>
@@ -389,10 +389,11 @@
           <label class="a-form-label">Admin email</label>
           <input type="email" class="a-input" id="pubEmail" placeholder="admin@example.com" style="max-width:320px">
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
           <button class="a-btn a-btn-primary" onclick="sendToAdmin()">📧 Email to admin</button>
           <button class="a-btn a-btn-ghost" onclick="copyExport()">📋 Copy export JSON</button>
         </div>
+        <div style="font-size:11px;color:#4a5568;margin-bottom:16px">On mobile this opens your share sheet so you can attach the export (with images) to Mail. On desktop it downloads the export file and opens a blank email — attach the downloaded file before sending.</div>
         <div id="exportSection" style="display:none">
           <label class="a-form-label">Export JSON — paste this into the SITE_CONTENT block in index.html</label>
           <textarea class="export-area" id="exportArea" readonly></textarea>
@@ -909,24 +910,50 @@
     return JSON.stringify(exportData, null, 2);
   }
 
-  function sendToAdmin() {
+  async function sendToAdmin() {
     const email = document.getElementById('pubEmail').value.trim();
     const summary = document.getElementById('pubSummary').value.trim() || 'Content update';
     state.adminEmail = email;
     saveState();
+
+    const nextVer = SITE_CONTENT.version + 1;
     const json = getExportJson();
-    const subject = `${state.siteTitle} — content update (v${SITE_CONTENT.version + 1})`;
-    const body = `Hi,\n\nPlease publish this content update to the site.\n\nChange summary: ${summary}\n\n--- SITE_CONTENT (paste into index.html replacing the existing SITE_CONTENT block) ---\n\n${json}\n\nThank you!`;
-    if (email) {
-      window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    } else {
-      // No email set — copy to clipboard
-      navigator.clipboard.writeText(body).then(() => showToast('📋 Copied to clipboard — paste into your email')).catch(() => {
-        document.getElementById('exportSection').style.display = 'block';
-        document.getElementById('exportArea').value = body;
-        showToast('Copy the text below and paste into your email');
-      });
+    const filename = `${slugify(state.siteTitle) || 'site'}-export-v${nextVer}.json`;
+    const subject = `${state.siteTitle} — content update (v${nextVer})`;
+    const message = `Content update for ${state.siteTitle}\n\nChange summary: ${summary}\n\nAttached: full content export (v${nextVer}), including any images — paste it into the SITE_CONTENT block in index.html to publish.`;
+
+    const blob = new Blob([json], { type: 'application/json' });
+
+    // Prefer the native share sheet so the export (with embedded images) goes
+    // out as a real file attachment — mailto: links can't carry that much data.
+    if (navigator.share && navigator.canShare) {
+      const file = new File([blob], filename, { type: 'application/json' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: subject, text: message });
+          showToast('✅ Shared — pick Mail to send it to your admin');
+          return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+          // fall through to the download + mailto fallback below
+        }
+      }
     }
+
+    downloadExportFile(blob, filename);
+    const mailBody = `Hi,\n\n${message}\n\nThe export file "${filename}" has just been downloaded to your device — attach it to this email before sending.\n\nThank you!`;
+    showToast('📎 File downloaded — attach it to the email that opens');
+    setTimeout(() => {
+      window.location.href = `mailto:${email ? encodeURIComponent(email) : ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
+    }, 400);
+  }
+
+  function downloadExportFile(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
   function copyExport() {
