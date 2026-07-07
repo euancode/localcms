@@ -1,5 +1,5 @@
-const CACHE = 'clarity-v1';
-const ASSETS = ['./', './index.html', './manifest.json'];
+const CACHE = 'clarity-v2';
+const ASSETS = ['./', './index.html', './manifest.json', './content.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
@@ -15,7 +15,9 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  if (e.request.mode === 'navigate') {
+  if (e.request.mode === 'navigate' || e.request.url.endsWith('/content.json')) {
+    // Network-first: content.json changes whenever the admin publishes, so a
+    // stale cached copy must never win over a reachable network response.
     e.respondWith(
       fetch(e.request).then(r => {
         if (r && r.status === 200) caches.open(CACHE).then(c => c.put(e.request, r.clone()));

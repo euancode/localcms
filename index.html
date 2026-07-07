@@ -195,7 +195,7 @@
     <div style="max-width:1100px;margin:0 auto;padding:48px 20px">
       <div class="hero">
         <div class="hero-title" id="heroTitle">Clarity</div>
-        <div class="hero-sub" id="heroSub"></div>
+        <div class="hero-sub" id="heroSub">Loading…</div>
       </div>
       <div class="section-label">Latest</div>
       <div class="pages-grid" id="homeGrid"></div>
@@ -374,7 +374,7 @@
       <!-- PUBLISH / SUBMIT -->
       <div class="a-section" id="a-publish">
         <h2 class="a-heading">Submit for Publish</h2>
-        <p style="font-size:13px;color:#a0aec0;margin-bottom:20px;line-height:1.6">Edit content locally until you're happy, then use this screen to send your changes — including any uploaded images — to the site admin. They'll update the codebase and push a new published version, which appears automatically next time visitors open the site.</p>
+        <p style="font-size:13px;color:#a0aec0;margin-bottom:20px;line-height:1.6">Edit content locally until you're happy. All of the site's content lives in a single <code>content.json</code> file — publishing just means replacing that file on the server. Use this screen to get your changes there, including any uploaded images.</p>
         <div class="publish-info">
           <div class="publish-row"><span class="publish-label">Current version</span><span class="publish-val" id="pubCurrentVer">—</span></div>
           <div class="publish-row"><span class="publish-label">Your changes</span><span class="publish-val" id="pubChangeSummary">—</span></div>
@@ -391,11 +391,12 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
           <button class="a-btn a-btn-primary" onclick="sendToAdmin()">📧 Email to admin</button>
+          <button class="a-btn a-btn-ghost" onclick="downloadPublishBundle()">⬇️ Download content.json</button>
           <button class="a-btn a-btn-ghost" onclick="copyExport()">📋 Copy export JSON</button>
         </div>
-        <div style="font-size:11px;color:#4a5568;margin-bottom:16px">On mobile this opens your share sheet so you can attach the export (with images) to Mail. On desktop it downloads the export file and opens a blank email — attach the downloaded file before sending.</div>
+        <div style="font-size:11px;color:#4a5568;margin-bottom:16px">Email: on mobile this opens your share sheet so you can attach the file to Mail; on desktop it downloads the file and opens a blank email for you to attach it to. Download: grabs content.json straight away — drop it into your FTP client (or git repo) to overwrite the one on the server, no email needed.</div>
         <div id="exportSection" style="display:none">
-          <label class="a-form-label">Export JSON — paste this into the SITE_CONTENT block in index.html</label>
+          <label class="a-form-label">Export JSON — save this as content.json and upload it, replacing the existing file on the server</label>
           <textarea class="export-area" id="exportArea" readonly></textarea>
         </div>
       </div>
@@ -434,49 +435,29 @@
 
 <script>
   const STORAGE_KEY = 'clarityState';
+  const CONTENT_CACHE_KEY = 'clarityContentCache';
 
-  // ── EMBEDDED PUBLISHED CONTENT ──────────────────────────────────────────────
-  // When admin publishes changes, they replace this object and bump version.
-  // The app detects a newer version and refreshes visitors automatically.
-  const SITE_CONTENT = {
-    version: 1,
-    publishedAt: 1751000000000,
-    adminEmail: '',
-    changelog: [
-      { v: 1, date: 1751000000000, summary: 'Initial launch — welcome content, getting started guides, and sample blog posts' }
-    ],
-    siteTitle: 'Clarity',
-    siteTagline: 'A beautifully simple serverless CMS',
-    categories: ['General', 'Blog', 'Guides', 'Updates'],
-    pages: [
-      {
-        id: 'p1', title: 'Welcome to Clarity', slug: 'welcome', category: 'General',
-        content: '<h2>Hello and welcome! 👋</h2><p>This is <strong>Clarity</strong> — a fully serverless, browser-based content management system. Everything is stored right here in your browser, so it works offline, costs nothing to host, and keeps your content completely private.</p><h2>What you can do</h2><ul><li>Create and edit pages with a rich-text editor</li><li>Organise content into categories</li><li>Upload and embed images from your device</li><li>Publish pages or save them as drafts</li><li>Customise the site name, tagline and password</li></ul><p>To open the admin panel, click the 🔒 icon in the top-right corner. The default password is <strong>admin1234</strong> — change it in Settings once you\'re in.</p><blockquote>Your content, your browser, your rules.</blockquote>',
-        featuredImage: null, status: 'published', createdAt: 1751000000000, updatedAt: 1751000000000
-      },
-      {
-        id: 'p2', title: 'Getting Started in 5 Minutes', slug: 'getting-started', category: 'Guides',
-        content: '<h2>Set up your site quickly</h2><p>Clarity is designed to get you writing in under five minutes. Here\'s the fast path.</p><h3>1 · Customise your site</h3><p>Go to <strong>Settings</strong> in the admin panel and update your site name and tagline. They appear on the homepage and browser tab.</p><h3>2 · Set up categories</h3><p>Head to <strong>Categories</strong> and create the topics that work for you — Blog, News, Projects, Recipes, anything. Categories appear as nav links once they have at least one published page.</p><h3>3 · Write your first page</h3><p>Click <strong>Pages → New Page</strong>, give it a title, pick a category, write your content using the editor toolbar, and hit Save.</p><h3>4 · Upload images</h3><p>Go to <strong>Media</strong> to upload images from your device. They\'re stored in your browser and can be inserted into any page editor with the 🖼️ button.</p><h3>5 · Submit for publish</h3><p>When you\'re happy with your changes, go to <strong>Submit</strong>, add a brief change summary, and email your edits to the site admin. They\'ll push the update, and visitors will see it on their next visit — automatically.</p>',
-        featuredImage: null, status: 'published', createdAt: 1750900000000, updatedAt: 1750950000000
-      },
-      {
-        id: 'p3', title: 'How the Publish Workflow Works', slug: 'publish-workflow', category: 'Guides',
-        content: '<h2>Local edits → admin publish → live for everyone</h2><p>Clarity uses a simple two-step workflow that keeps content quality high while keeping the infrastructure cost at zero.</p><h3>Step 1 — Edit locally</h3><p>The CMS admin panel runs entirely in your browser. Create pages, upload images, rearrange categories — all without touching a server. Your changes are saved in <em>localStorage</em> as you go, so you can close the tab and come back later without losing anything.</p><h3>Step 2 — Submit to admin</h3><p>When you\'re ready to go live, open the <strong>Submit</strong> section in the admin panel. Write a brief summary of what changed, then click <em>Email to admin</em>. This opens a pre-filled email with your full content export attached.</p><h3>Step 3 — Admin publishes</h3><p>The site admin pastes your export into the codebase, bumps the version number, and adds a changelog entry. Once pushed to GitHub Pages (or whatever host), the new version is live.</p><h3>Step 4 — Visitors get updated automatically</h3><p>The app checks for a newer published version on every visit. If the version in the HTML is newer than what\'s stored locally, it refreshes the content automatically — visitors always see the latest, no cache-clearing needed.</p><blockquote>Think of it as a pull-request workflow for your content — propose changes, get them reviewed, publish when ready.</blockquote>',
-        featuredImage: null, status: 'published', createdAt: 1750800000000, updatedAt: 1750860000000
-      },
-      {
-        id: 'p4', title: 'Rich-Text Editor Tips', slug: 'editor-tips', category: 'Blog',
-        content: '<h2>Getting the most from the editor</h2><p>The built-in editor handles everything you need for well-formatted pages. Here are the tricks worth knowing.</p><h3>Keyboard shortcuts</h3><ul><li><strong>Ctrl+B</strong> (Cmd+B on Mac) — Bold</li><li><strong>Ctrl+I</strong> — Italic</li><li><strong>Ctrl+U</strong> — Underline</li></ul><h3>The toolbar</h3><ul><li><strong>H2 / H3</strong> — Format the selected line as a section or sub-section heading</li><li><strong>¶</strong> — Return a heading back to normal paragraph text</li><li><strong>• List / 1. List</strong> — Start a bullet or numbered list</li><li><strong>❝</strong> — Format the selected text as a pull-quote</li><li><strong>🔗</strong> — Wrap selected text in a hyperlink</li><li><strong>🖼️</strong> — Insert an image from your Media Library at the cursor position</li></ul><h3>Inserting images</h3><p>Upload your images in the <strong>Media</strong> section first. Then in the editor, position your cursor where you want the image, and click 🖼️. A picker will show all your uploaded images.</p><blockquote>Tip: keep images under 500 KB each — localStorage has a ~5 MB limit shared across all your content.</blockquote>',
-        featuredImage: null, status: 'published', createdAt: 1750700000000, updatedAt: 1750720000000
-      },
-      {
-        id: 'p5', title: 'Roadmap & Upcoming Features', slug: 'roadmap', category: 'Updates',
-        content: '<h2>What\'s coming next</h2><p>Clarity is actively evolving. Here\'s a snapshot of what\'s on the roadmap.</p><h3>Planned</h3><ul><li><strong>Export / Import</strong> — Download your entire site as a JSON file and restore it on any device</li><li><strong>Page ordering</strong> — Drag pages to reorder them in the navigation</li><li><strong>Tags</strong> — Multi-tag pages for richer filtering</li><li><strong>Search</strong> — Full-text search across all published content</li><li><strong>Custom themes</strong> — Choose from a set of colour schemes for the public site</li></ul><h3>Under consideration</h3><ul><li>Scheduled publishing (publish at a future date)</li><li>Simple analytics (page views, stored locally)</li><li>Comments (visitor-submitted, stored locally)</li></ul><p>Have a feature request? Use the <strong>Submit</strong> section in the admin to send it through with your next content update.</p>',
-        featuredImage: null, status: 'draft', createdAt: 1750600000000, updatedAt: 1750650000000
-      }
-    ]
-  };
-  // ── END EMBEDDED CONTENT ────────────────────────────────────────────────────
+  // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
+  // Loaded at runtime from content.json. To publish changes, replace that file
+  // on the server (FTP, git commit, etc.) — the app detects a newer version
+  // number in it and refreshes visitors automatically.
+  let SITE_CONTENT;
+
+  async function loadSiteContent() {
+    try {
+      const res = await fetch('./content.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('bad response');
+      const json = await res.json();
+      try { localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(json)); } catch(e) {}
+      return json;
+    } catch(e) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(CONTENT_CACHE_KEY) || 'null');
+        if (cached) return cached;
+      } catch(e2) {}
+      return { version: 0, publishedAt: Date.now(), adminEmail: '', changelog: [], siteTitle: 'Clarity', siteTagline: '', categories: [], pages: [] };
+    }
+  }
 
   let state;
   let editingId = null;
@@ -619,6 +600,7 @@
   // ── ADMIN ACCESS ─────────────────────────────────────────────────────────────
 
   function openLock() {
+    if (!state) { showToast('Still loading…'); return; }
     document.getElementById('pwModal').classList.add('open');
     document.getElementById('pwInput').value = '';
     document.getElementById('pwErr').textContent = '';
@@ -918,9 +900,9 @@
 
     const nextVer = SITE_CONTENT.version + 1;
     const json = getExportJson();
-    const filename = `${slugify(state.siteTitle) || 'site'}-export-v${nextVer}.json`;
+    const filename = 'content.json';
     const subject = `${state.siteTitle} — content update (v${nextVer})`;
-    const message = `Content update for ${state.siteTitle}\n\nChange summary: ${summary}\n\nAttached: full content export (v${nextVer}), including any images — paste it into the SITE_CONTENT block in index.html to publish.`;
+    const message = `Content update for ${state.siteTitle}\n\nChange summary: ${summary}\n\nAttached: content.json (v${nextVer}), including any images. To publish, replace the content.json file on the server with this one — no code changes needed.`;
 
     const blob = new Blob([json], { type: 'application/json' });
 
@@ -941,11 +923,19 @@
     }
 
     downloadExportFile(blob, filename);
-    const mailBody = `Hi,\n\n${message}\n\nThe export file "${filename}" has just been downloaded to your device — attach it to this email before sending.\n\nThank you!`;
+    const mailBody = `Hi,\n\n${message}\n\nThe file "${filename}" has just been downloaded to your device — attach it to this email before sending.\n\nThank you!`;
     showToast('📎 File downloaded — attach it to the email that opens');
     setTimeout(() => {
       window.location.href = `mailto:${email ? encodeURIComponent(email) : ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
     }, 400);
+  }
+
+  function downloadPublishBundle() {
+    const nextVer = SITE_CONTENT.version + 1;
+    const json = getExportJson();
+    const blob = new Blob([json], { type: 'application/json' });
+    downloadExportFile(blob, 'content.json');
+    showToast(`⬇️ content.json (v${nextVer}) downloaded — upload it via FTP or your usual publish method`);
   }
 
   function downloadExportFile(blob, filename) {
@@ -1007,8 +997,12 @@
 
   // ── INIT ─────────────────────────────────────────────────────────────────────
 
-  state = loadState();
-  initSite();
+  async function boot() {
+    SITE_CONTENT = await loadSiteContent();
+    state = loadState();
+    initSite();
+  }
+  boot();
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 </script>
