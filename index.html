@@ -11,7 +11,7 @@
     :root {
       --bg: #f7f8fc; --card: #fff; --border: #e2e8f0;
       --text: #1a202c; --text-soft: #4a5568; --text-muted: #a0aec0;
-      --accent: #667eea; --danger: #e53e3e; --success: #38a169;
+      --accent: #667eea; --accent2: #764ba2; --danger: #e53e3e; --success: #38a169;
       --r: 10px; --shadow: 0 1px 4px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
     }
     @media (prefers-color-scheme: dark) {
@@ -31,6 +31,8 @@
     .ver-btn { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 20px; background: var(--bg); border: 1.5px solid var(--border); color: var(--text-soft); cursor: pointer; transition: all .15s; }
     .ver-btn:hover { border-color: var(--accent); color: var(--accent); }
     .ver-btn.has-update { border-color: #38a169; color: #38a169; animation: pulse 2s infinite; }
+    .ver-date-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    @media (max-width: 480px) { .ver-date-label { display: none; } }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
     .nav-lock { font-size: 18px; cursor: pointer; opacity: .3; transition: opacity .15s; background: none; border: none; padding: 4px; }
     .nav-lock:hover { opacity: .7; }
@@ -40,14 +42,14 @@
     .site-view.active { display: block; }
     #view-home { max-width: 1100px; margin: 0 auto; padding: 48px 20px; }
     .hero { text-align: center; margin-bottom: 56px; }
-    .hero-title { font-size: clamp(32px, 5vw, 56px); font-weight: 900; line-height: 1.1; margin-bottom: 14px; background: linear-gradient(135deg, var(--accent), #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero-title { font-size: clamp(32px, 5vw, 56px); font-weight: 900; line-height: 1.1; margin-bottom: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .hero-sub { font-size: 18px; color: var(--text-soft); max-width: 520px; margin: 0 auto; }
     .section-label { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 16px; }
     .pages-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
     .page-card { background: var(--card); border-radius: var(--r); border: 1px solid var(--border); padding: 20px; cursor: pointer; transition: transform .15s, box-shadow .15s; box-shadow: var(--shadow); }
     .page-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,.12); }
     .card-img { width: 100%; height: 160px; object-fit: cover; border-radius: 6px; margin-bottom: 14px; }
-    .card-cat { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; background: #667eea22; color: var(--accent); padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
+    .card-cat { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
     .card-title { font-size: 17px; font-weight: 700; margin-bottom: 8px; line-height: 1.3; }
     .card-excerpt { font-size: 13px; color: var(--text-soft); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     .card-meta { font-size: 11px; color: var(--text-muted); margin-top: 12px; }
@@ -170,6 +172,11 @@
     .change-item { padding: 8px 12px; background: #1e2535; border-radius: 6px; font-size: 12px; color: #a0aec0; margin-bottom: 6px; }
     .change-item b { color: #e2e8f0; }
     .export-area { width: 100%; background: #0a0e18; border: 1px solid #2a3344; border-radius: 8px; padding: 12px; color: #68d391; font-family: 'Courier New', monospace; font-size: 11px; resize: vertical; min-height: 120px; outline: none; margin: 12px 0; }
+    .color-palette { display: flex; flex-wrap: wrap; gap: 8px; }
+    .color-swatch { width: 32px; height: 32px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; padding: 0; transition: transform .1s, box-shadow .1s; }
+    .color-swatch:hover { transform: scale(1.08); }
+    .color-swatch.selected { box-shadow: 0 0 0 2px #161b27, 0 0 0 4px #fff; }
+    .color-swatch-preview { width: 32px; height: 32px; border-radius: 8px; border: 1.5px solid #2a3344; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -185,6 +192,7 @@
     <div class="nav-links" id="navLinks"></div>
     <div class="nav-right">
       <button class="ver-btn" id="verBtn" onclick="showVersionHistory()">v1</button>
+      <span class="ver-date-label" id="verDateLabel"></span>
       <button class="nav-lock" onclick="openLock()">🔒</button>
     </div>
   </div>
@@ -195,7 +203,7 @@
     <div style="max-width:1100px;margin:0 auto;padding:48px 20px">
       <div class="hero">
         <div class="hero-title" id="heroTitle">Clarity</div>
-        <div class="hero-sub" id="heroSub"></div>
+        <div class="hero-sub" id="heroSub">Loading…</div>
       </div>
       <div class="section-label">Latest</div>
       <div class="pages-grid" id="homeGrid"></div>
@@ -373,8 +381,12 @@
 
       <!-- PUBLISH / SUBMIT -->
       <div class="a-section" id="a-publish">
-        <h2 class="a-heading">Submit for Publish</h2>
-        <p style="font-size:13px;color:#a0aec0;margin-bottom:20px;line-height:1.6">Edit content locally until you're happy, then use this screen to send your changes — including any uploaded images — to the site admin. They'll update the codebase and push a new published version, which appears automatically next time visitors open the site.</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:12px">
+          <h2 class="a-heading" style="margin:0">Submit for Publish</h2>
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="checkServerChanges(false)">🔄 Check for server changes</button>
+        </div>
+        <p style="font-size:13px;color:#a0aec0;margin-bottom:16px;line-height:1.6">Edit content locally until you're happy. All of the site's content lives in a single <code>content.json</code> file — publishing just means replacing that file on the server. Use this screen to get your changes there, including any uploaded images.</p>
+        <div id="pubServerCheck" style="margin-bottom:16px"></div>
         <div class="publish-info">
           <div class="publish-row"><span class="publish-label">Current version</span><span class="publish-val" id="pubCurrentVer">—</span></div>
           <div class="publish-row"><span class="publish-label">Your changes</span><span class="publish-val" id="pubChangeSummary">—</span></div>
@@ -391,11 +403,12 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
           <button class="a-btn a-btn-primary" onclick="sendToAdmin()">📧 Email to admin</button>
+          <button class="a-btn a-btn-ghost" onclick="downloadPublishBundle()">⬇️ Download content.json</button>
           <button class="a-btn a-btn-ghost" onclick="copyExport()">📋 Copy export JSON</button>
         </div>
-        <div style="font-size:11px;color:#4a5568;margin-bottom:16px">On mobile this opens your share sheet so you can attach the export (with images) to Mail. On desktop it downloads the export file and opens a blank email — attach the downloaded file before sending.</div>
+        <div style="font-size:11px;color:#4a5568;margin-bottom:16px">Email: on mobile this opens your share sheet so you can attach the file to Mail; on desktop it downloads the file and opens a blank email for you to attach it to. Download: grabs content.json straight away — drop it into your FTP client (or git repo) to overwrite the one on the server, no email needed.</div>
         <div id="exportSection" style="display:none">
-          <label class="a-form-label">Export JSON — paste this into the SITE_CONTENT block in index.html</label>
+          <label class="a-form-label">Export JSON — save this as content.json and upload it, replacing the existing file on the server</label>
           <textarea class="export-area" id="exportArea" readonly></textarea>
         </div>
       </div>
@@ -410,6 +423,15 @@
         <div class="a-form-group">
           <label class="a-form-label">Tagline</label>
           <input type="text" class="a-input" id="setTagline" style="max-width:400px">
+        </div>
+        <div class="a-form-group">
+          <label class="a-form-label">Primary Color</label>
+          <div class="color-palette" id="colorPalette"></div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <div class="color-swatch-preview" id="colorPreview"></div>
+            <input type="text" class="a-input" id="setColorHex" placeholder="#667eea" style="max-width:140px;font-family:'Courier New',monospace" oninput="onColorHexInput(this.value)">
+          </div>
+          <div style="font-size:11px;color:var(--danger);margin-top:4px;min-height:14px" id="colorErr"></div>
         </div>
         <div class="a-form-group">
           <label class="a-form-label">New Password</label>
@@ -434,49 +456,29 @@
 
 <script>
   const STORAGE_KEY = 'clarityState';
+  const CONTENT_CACHE_KEY = 'clarityContentCache';
 
-  // ── EMBEDDED PUBLISHED CONTENT ──────────────────────────────────────────────
-  // When admin publishes changes, they replace this object and bump version.
-  // The app detects a newer version and refreshes visitors automatically.
-  const SITE_CONTENT = {
-    version: 1,
-    publishedAt: 1751000000000,
-    adminEmail: '',
-    changelog: [
-      { v: 1, date: 1751000000000, summary: 'Initial launch — welcome content, getting started guides, and sample blog posts' }
-    ],
-    siteTitle: 'Clarity',
-    siteTagline: 'A beautifully simple serverless CMS',
-    categories: ['General', 'Blog', 'Guides', 'Updates'],
-    pages: [
-      {
-        id: 'p1', title: 'Welcome to Clarity', slug: 'welcome', category: 'General',
-        content: '<h2>Hello and welcome! 👋</h2><p>This is <strong>Clarity</strong> — a fully serverless, browser-based content management system. Everything is stored right here in your browser, so it works offline, costs nothing to host, and keeps your content completely private.</p><h2>What you can do</h2><ul><li>Create and edit pages with a rich-text editor</li><li>Organise content into categories</li><li>Upload and embed images from your device</li><li>Publish pages or save them as drafts</li><li>Customise the site name, tagline and password</li></ul><p>To open the admin panel, click the 🔒 icon in the top-right corner. The default password is <strong>admin1234</strong> — change it in Settings once you\'re in.</p><blockquote>Your content, your browser, your rules.</blockquote>',
-        featuredImage: null, status: 'published', createdAt: 1751000000000, updatedAt: 1751000000000
-      },
-      {
-        id: 'p2', title: 'Getting Started in 5 Minutes', slug: 'getting-started', category: 'Guides',
-        content: '<h2>Set up your site quickly</h2><p>Clarity is designed to get you writing in under five minutes. Here\'s the fast path.</p><h3>1 · Customise your site</h3><p>Go to <strong>Settings</strong> in the admin panel and update your site name and tagline. They appear on the homepage and browser tab.</p><h3>2 · Set up categories</h3><p>Head to <strong>Categories</strong> and create the topics that work for you — Blog, News, Projects, Recipes, anything. Categories appear as nav links once they have at least one published page.</p><h3>3 · Write your first page</h3><p>Click <strong>Pages → New Page</strong>, give it a title, pick a category, write your content using the editor toolbar, and hit Save.</p><h3>4 · Upload images</h3><p>Go to <strong>Media</strong> to upload images from your device. They\'re stored in your browser and can be inserted into any page editor with the 🖼️ button.</p><h3>5 · Submit for publish</h3><p>When you\'re happy with your changes, go to <strong>Submit</strong>, add a brief change summary, and email your edits to the site admin. They\'ll push the update, and visitors will see it on their next visit — automatically.</p>',
-        featuredImage: null, status: 'published', createdAt: 1750900000000, updatedAt: 1750950000000
-      },
-      {
-        id: 'p3', title: 'How the Publish Workflow Works', slug: 'publish-workflow', category: 'Guides',
-        content: '<h2>Local edits → admin publish → live for everyone</h2><p>Clarity uses a simple two-step workflow that keeps content quality high while keeping the infrastructure cost at zero.</p><h3>Step 1 — Edit locally</h3><p>The CMS admin panel runs entirely in your browser. Create pages, upload images, rearrange categories — all without touching a server. Your changes are saved in <em>localStorage</em> as you go, so you can close the tab and come back later without losing anything.</p><h3>Step 2 — Submit to admin</h3><p>When you\'re ready to go live, open the <strong>Submit</strong> section in the admin panel. Write a brief summary of what changed, then click <em>Email to admin</em>. This opens a pre-filled email with your full content export attached.</p><h3>Step 3 — Admin publishes</h3><p>The site admin pastes your export into the codebase, bumps the version number, and adds a changelog entry. Once pushed to GitHub Pages (or whatever host), the new version is live.</p><h3>Step 4 — Visitors get updated automatically</h3><p>The app checks for a newer published version on every visit. If the version in the HTML is newer than what\'s stored locally, it refreshes the content automatically — visitors always see the latest, no cache-clearing needed.</p><blockquote>Think of it as a pull-request workflow for your content — propose changes, get them reviewed, publish when ready.</blockquote>',
-        featuredImage: null, status: 'published', createdAt: 1750800000000, updatedAt: 1750860000000
-      },
-      {
-        id: 'p4', title: 'Rich-Text Editor Tips', slug: 'editor-tips', category: 'Blog',
-        content: '<h2>Getting the most from the editor</h2><p>The built-in editor handles everything you need for well-formatted pages. Here are the tricks worth knowing.</p><h3>Keyboard shortcuts</h3><ul><li><strong>Ctrl+B</strong> (Cmd+B on Mac) — Bold</li><li><strong>Ctrl+I</strong> — Italic</li><li><strong>Ctrl+U</strong> — Underline</li></ul><h3>The toolbar</h3><ul><li><strong>H2 / H3</strong> — Format the selected line as a section or sub-section heading</li><li><strong>¶</strong> — Return a heading back to normal paragraph text</li><li><strong>• List / 1. List</strong> — Start a bullet or numbered list</li><li><strong>❝</strong> — Format the selected text as a pull-quote</li><li><strong>🔗</strong> — Wrap selected text in a hyperlink</li><li><strong>🖼️</strong> — Insert an image from your Media Library at the cursor position</li></ul><h3>Inserting images</h3><p>Upload your images in the <strong>Media</strong> section first. Then in the editor, position your cursor where you want the image, and click 🖼️. A picker will show all your uploaded images.</p><blockquote>Tip: keep images under 500 KB each — localStorage has a ~5 MB limit shared across all your content.</blockquote>',
-        featuredImage: null, status: 'published', createdAt: 1750700000000, updatedAt: 1750720000000
-      },
-      {
-        id: 'p5', title: 'Roadmap & Upcoming Features', slug: 'roadmap', category: 'Updates',
-        content: '<h2>What\'s coming next</h2><p>Clarity is actively evolving. Here\'s a snapshot of what\'s on the roadmap.</p><h3>Planned</h3><ul><li><strong>Export / Import</strong> — Download your entire site as a JSON file and restore it on any device</li><li><strong>Page ordering</strong> — Drag pages to reorder them in the navigation</li><li><strong>Tags</strong> — Multi-tag pages for richer filtering</li><li><strong>Search</strong> — Full-text search across all published content</li><li><strong>Custom themes</strong> — Choose from a set of colour schemes for the public site</li></ul><h3>Under consideration</h3><ul><li>Scheduled publishing (publish at a future date)</li><li>Simple analytics (page views, stored locally)</li><li>Comments (visitor-submitted, stored locally)</li></ul><p>Have a feature request? Use the <strong>Submit</strong> section in the admin to send it through with your next content update.</p>',
-        featuredImage: null, status: 'draft', createdAt: 1750600000000, updatedAt: 1750650000000
-      }
-    ]
-  };
-  // ── END EMBEDDED CONTENT ────────────────────────────────────────────────────
+  // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
+  // Loaded at runtime from content.json. To publish changes, replace that file
+  // on the server (FTP, git commit, etc.) — the app detects a newer version
+  // number in it and refreshes visitors automatically.
+  let SITE_CONTENT;
+
+  async function loadSiteContent() {
+    try {
+      const res = await fetch('./content.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('bad response');
+      const json = await res.json();
+      try { localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(json)); } catch(e) {}
+      return json;
+    } catch(e) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(CONTENT_CACHE_KEY) || 'null');
+        if (cached) return cached;
+      } catch(e2) {}
+      return { version: 0, publishedAt: Date.now(), adminEmail: '', changelog: [], siteTitle: 'Clarity', siteTagline: '', categories: [], pages: [] };
+    }
+  }
 
   let state;
   let editingId = null;
@@ -526,6 +528,8 @@
     document.getElementById('heroSub').textContent = state.siteTagline;
     document.getElementById('navBrand').textContent = state.siteTitle;
     document.getElementById('verBtn').textContent = 'v' + SITE_CONTENT.version;
+    document.getElementById('verDateLabel').textContent = 'Updated ' + formatDate(SITE_CONTENT.publishedAt);
+    applyThemeColor(state.themeColor);
     renderNavLinks();
     showView('home');
   }
@@ -619,6 +623,7 @@
   // ── ADMIN ACCESS ─────────────────────────────────────────────────────────────
 
   function openLock() {
+    if (!state) { showToast('Still loading…'); return; }
     document.getElementById('pwModal').classList.add('open');
     document.getElementById('pwInput').value = '';
     document.getElementById('pwErr').textContent = '';
@@ -874,7 +879,8 @@
       return orig && (orig.title !== p.title || orig.content !== p.content || orig.status !== p.status || orig.category !== p.category);
     });
     const deleted = embedded.filter(e => !local.find(p => p.id === e.id));
-    const hasChanges = added.length || modified.length || deleted.length || state.siteTitle !== SITE_CONTENT.siteTitle || state.siteTagline !== SITE_CONTENT.siteTagline;
+    const colorChanged = normalizeHex(state.themeColor || '#667eea') !== normalizeHex(SITE_CONTENT.themeColor || '#667eea');
+    const hasChanges = added.length || modified.length || deleted.length || state.siteTitle !== SITE_CONTENT.siteTitle || state.siteTagline !== SITE_CONTENT.siteTagline || colorChanged;
 
     document.getElementById('pubCurrentVer').textContent = `v${SITE_CONTENT.version}`;
     document.getElementById('pubChangeSummary').textContent = hasChanges ? `${added.length} added, ${modified.length} modified, ${deleted.length} removed` : 'No changes since last publish';
@@ -885,12 +891,58 @@
     else {
       if (state.siteTitle !== SITE_CONTENT.siteTitle) changesHtml += `<div class="change-item">⚙️ Site name changed to <b>${escHtml(state.siteTitle)}</b></div>`;
       if (state.siteTagline !== SITE_CONTENT.siteTagline) changesHtml += `<div class="change-item">⚙️ Tagline updated</div>`;
+      if (colorChanged) changesHtml += `<div class="change-item">🎨 Primary color changed to <b>${escHtml(normalizeHex(state.themeColor || '#667eea'))}</b></div>`;
       added.forEach(p => { changesHtml += `<div class="change-item">✅ New page: <b>${escHtml(p.title)}</b> (${p.status})</div>`; });
       modified.forEach(p => { changesHtml += `<div class="change-item">✏️ Updated: <b>${escHtml(p.title)}</b></div>`; });
       deleted.forEach(p => { changesHtml += `<div class="change-item">🗑️ Deleted: <b>${escHtml(p.title)}</b></div>`; });
     }
     document.getElementById('pubChangesList').innerHTML = changesHtml;
     document.getElementById('pubEmail').value = state.adminEmail || '';
+    checkServerChanges(true);
+  }
+
+  async function checkServerChanges(silent) {
+    const el = document.getElementById('pubServerCheck');
+    if (!el) return;
+    if (!silent) el.innerHTML = `<div style="font-size:12px;color:#718096">Checking server for newer content…</div>`;
+    try {
+      const res = await fetch('./content.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('bad response');
+      const server = await res.json();
+      if (server.version > SITE_CONTENT.version) {
+        const newEntries = server.changelog.filter(c => c.v > SITE_CONTENT.version);
+        el.innerHTML = `<div style="background:#4a2c0a;border:1px solid #92400e;border-radius:10px;padding:14px 16px">
+          <div style="font-weight:700;color:#fbbf24;margin-bottom:6px">⚠️ Server has newer content</div>
+          <div style="font-size:13px;color:#e2e8f0;margin-bottom:8px">The live site is now at <b>v${server.version}</b> (published ${formatDate(server.publishedAt)}) — you're editing from <b>v${SITE_CONTENT.version}</b>, loaded when this admin session started. Publishing now would overwrite those changes.</div>
+          ${newEntries.map(c => `<div style="font-size:12px;color:#a0aec0">• v${c.v}: ${escHtml(c.summary)}</div>`).join('')}
+          <button class="a-btn a-btn-primary a-btn-sm" style="margin-top:10px" onclick="syncWithServer()">Sync with server</button>
+        </div>`;
+      } else if (!silent) {
+        el.innerHTML = `<div style="font-size:12px;color:#718096">✅ Up to date — the server is still on v${server.version}, same as when you started editing.</div>`;
+      } else {
+        el.innerHTML = '';
+      }
+    } catch(e) {
+      el.innerHTML = silent ? '' : `<div style="font-size:12px;color:#718096">Couldn't reach the server to check — you may be offline.</div>`;
+    }
+  }
+
+  async function syncWithServer() {
+    if (!confirm('This discards any local unpublished edits and loads the latest published content from the server. Continue?')) return;
+    try {
+      const res = await fetch('./content.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('bad response');
+      const server = await res.json();
+      SITE_CONTENT = server;
+      try { localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(server)); } catch(e) {}
+      state = {...JSON.parse(JSON.stringify(server)), password: state.password, images: state.images, adminEmail: state.adminEmail || ''};
+      saveState();
+      initSite();
+      showAdminSection('publish');
+      showToast(`✅ Synced to v${server.version}`);
+    } catch(e) {
+      showToast('⚠️ Could not reach the server to sync');
+    }
   }
 
   function getExportJson() {
@@ -904,6 +956,7 @@
       ],
       siteTitle: state.siteTitle,
       siteTagline: state.siteTagline,
+      themeColor: normalizeHex(state.themeColor || '#667eea'),
       categories: state.categories,
       pages: state.pages.map(p => ({...p, featuredImage: p.featuredImage || null}))
     };
@@ -918,9 +971,9 @@
 
     const nextVer = SITE_CONTENT.version + 1;
     const json = getExportJson();
-    const filename = `${slugify(state.siteTitle) || 'site'}-export-v${nextVer}.json`;
+    const filename = 'content.json';
     const subject = `${state.siteTitle} — content update (v${nextVer})`;
-    const message = `Content update for ${state.siteTitle}\n\nChange summary: ${summary}\n\nAttached: full content export (v${nextVer}), including any images — paste it into the SITE_CONTENT block in index.html to publish.`;
+    const message = `Content update for ${state.siteTitle}\n\nChange summary: ${summary}\n\nAttached: content.json (v${nextVer}), including any images. To publish, replace the content.json file on the server with this one — no code changes needed.`;
 
     const blob = new Blob([json], { type: 'application/json' });
 
@@ -941,11 +994,19 @@
     }
 
     downloadExportFile(blob, filename);
-    const mailBody = `Hi,\n\n${message}\n\nThe export file "${filename}" has just been downloaded to your device — attach it to this email before sending.\n\nThank you!`;
+    const mailBody = `Hi,\n\n${message}\n\nThe file "${filename}" has just been downloaded to your device — attach it to this email before sending.\n\nThank you!`;
     showToast('📎 File downloaded — attach it to the email that opens');
     setTimeout(() => {
       window.location.href = `mailto:${email ? encodeURIComponent(email) : ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
     }, 400);
+  }
+
+  function downloadPublishBundle() {
+    const nextVer = SITE_CONTENT.version + 1;
+    const json = getExportJson();
+    const blob = new Blob([json], { type: 'application/json' });
+    downloadExportFile(blob, 'content.json');
+    showToast(`⬇️ content.json (v${nextVer}) downloaded — upload it via FTP or your usual publish method`);
   }
 
   function downloadExportFile(blob, filename) {
@@ -969,12 +1030,27 @@
     document.getElementById('setSiteName').value = state.siteTitle;
     document.getElementById('setTagline').value = state.siteTagline;
     document.getElementById('setNewPw').value = '';
+    const color = normalizeHex(state.themeColor || '#667eea');
+    document.getElementById('setColorHex').value = color;
+    document.getElementById('colorPreview').style.background = color;
+    document.getElementById('colorErr').textContent = '';
+    renderColorPalette(color);
   }
 
   function saveSettings() {
     state.siteTitle = document.getElementById('setSiteName').value.trim() || state.siteTitle;
     state.siteTagline = document.getElementById('setTagline').value.trim();
-    saveState(); showToast('✅ Settings saved');
+    const colorInput = document.getElementById('setColorHex').value.trim();
+    if (isValidHex(colorInput)) {
+      state.themeColor = normalizeHex(colorInput);
+    } else {
+      document.getElementById('colorErr').textContent = 'Enter a valid hex code, e.g. #667eea';
+      showToast('⚠️ Fix the primary color before saving');
+      return;
+    }
+    saveState();
+    applyThemeColor(state.themeColor);
+    showToast('✅ Settings saved');
   }
 
   function changePassword() {
@@ -998,6 +1074,7 @@
   function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function stripHtml(h) { const t=document.createElement('div'); t.innerHTML=h; return t.textContent||t.innerText||''; }
+  function formatDate(ts) { return new Date(ts).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'}); }
   function showToast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg; t.classList.add('show');
@@ -1005,10 +1082,106 @@
     toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
   }
 
+  // ── THEME COLOR ──────────────────────────────────────────────────────────────
+
+  const COLOR_PALETTE = ['#667eea','#3b82f6','#0ea5e9','#14b8a6','#22c55e','#84cc16','#f59e0b','#f97316','#ef4444','#ec4899','#8b5cf6','#64748b'];
+
+  function isValidHex(v) { return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test((v || '').trim()); }
+
+  function normalizeHex(hex) {
+    let h = (hex || '#667eea').trim().toLowerCase();
+    if (h.length === 4) h = '#' + h.slice(1).split('').map(c => c + c).join('');
+    return h;
+  }
+
+  function hexToRgb(hex) {
+    const h = normalizeHex(hex).slice(1);
+    const num = parseInt(h, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+
+  function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+  }
+
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; }
+    else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        default: h = (r - g) / d + 4;
+      }
+      h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+  }
+
+  function hslToRgb(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    let r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      const hue2rgb = (p, q, t) => { if (t < 0) t += 1; if (t > 1) t -= 1; if (t < 1/6) return p + (q - p) * 6 * t; if (t < 1/2) return q; if (t < 2/3) return p + (q - p) * (2/3 - t) * 6; return p; };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1/3);
+    }
+    return { r: r * 255, g: g * 255, b: b * 255 };
+  }
+
+  // Derives a second gradient stop from the chosen accent, echoing the
+  // original indigo→purple hero gradient's hue/lightness relationship.
+  function accentGradientPartner(hex) {
+    const { r, g, b } = hexToRgb(hex);
+    const hsl = rgbToHsl(r, g, b);
+    const rgb2 = hslToRgb((hsl.h + 35) % 360, hsl.s, Math.min(85, hsl.l + 6));
+    return rgbToHex(rgb2.r, rgb2.g, rgb2.b);
+  }
+
+  function applyThemeColor(hex) {
+    const c = isValidHex(hex) ? normalizeHex(hex) : '#667eea';
+    document.documentElement.style.setProperty('--accent', c);
+    document.documentElement.style.setProperty('--accent2', accentGradientPartner(c));
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', c);
+  }
+
+  function renderColorPalette(selected) {
+    const wrap = document.getElementById('colorPalette');
+    const sel = normalizeHex(selected);
+    wrap.innerHTML = COLOR_PALETTE.map(c => `<button type="button" class="color-swatch${c===sel?' selected':''}" style="background:${c}" title="${c}" aria-label="${c}" onclick="selectPaletteColor('${c}')"></button>`).join('');
+  }
+
+  function selectPaletteColor(hex) {
+    document.getElementById('setColorHex').value = hex;
+    onColorHexInput(hex);
+  }
+
+  function onColorHexInput(value) {
+    const v = value.trim();
+    const err = document.getElementById('colorErr');
+    if (!isValidHex(v)) { err.textContent = v ? 'Enter a valid hex code, e.g. #667eea' : ''; return; }
+    err.textContent = '';
+    const c = normalizeHex(v);
+    applyThemeColor(c);
+    document.getElementById('colorPreview').style.background = c;
+    renderColorPalette(c);
+  }
+
   // ── INIT ─────────────────────────────────────────────────────────────────────
 
-  state = loadState();
-  initSite();
+  async function boot() {
+    SITE_CONTENT = await loadSiteContent();
+    state = loadState();
+    initSite();
+  }
+  boot();
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 </script>
