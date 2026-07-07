@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#667eea">
+  <title>Clarity</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f7f8fc; --card: #fff; --border: #e2e8f0;
+      --text: #1a202c; --text-soft: #4a5568; --text-muted: #a0aec0;
+      --accent: #667eea; --danger: #e53e3e; --success: #38a169;
+      --r: 10px; --shadow: 0 1px 4px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0e1117; --card: #161b27; --border: #2a3344; --text: #e2e8f0; --text-soft: #a0aec0; --text-muted: #4a5568; }
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.6; }
+
+    /* NAV */
+    #site-nav { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+    .nav-inner { max-width: 1100px; margin: 0 auto; padding: 0 20px; height: 58px; display: flex; align-items: center; gap: 12px; }
+    .nav-brand { font-size: 18px; font-weight: 900; color: var(--accent); cursor: pointer; flex-shrink: 0; }
+    .nav-links { display: flex; gap: 4px; flex: 1; overflow-x: auto; scrollbar-width: none; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-link { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--text-soft); cursor: pointer; white-space: nowrap; transition: all .15s; border: none; background: none; }
+    .nav-link:hover, .nav-link.active { background: var(--accent); color: #fff; }
+    .nav-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
+    .ver-btn { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 20px; background: var(--bg); border: 1.5px solid var(--border); color: var(--text-soft); cursor: pointer; transition: all .15s; }
+    .ver-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .ver-btn.has-update { border-color: #38a169; color: #38a169; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+    .nav-lock { font-size: 18px; cursor: pointer; opacity: .3; transition: opacity .15s; background: none; border: none; padding: 4px; }
+    .nav-lock:hover { opacity: .7; }
+
+    /* SITE VIEWS */
+    .site-view { display: none; }
+    .site-view.active { display: block; }
+    #view-home { max-width: 1100px; margin: 0 auto; padding: 48px 20px; }
+    .hero { text-align: center; margin-bottom: 56px; }
+    .hero-title { font-size: clamp(32px, 5vw, 56px); font-weight: 900; line-height: 1.1; margin-bottom: 14px; background: linear-gradient(135deg, var(--accent), #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero-sub { font-size: 18px; color: var(--text-soft); max-width: 520px; margin: 0 auto; }
+    .section-label { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 16px; }
+    .pages-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+    .page-card { background: var(--card); border-radius: var(--r); border: 1px solid var(--border); padding: 20px; cursor: pointer; transition: transform .15s, box-shadow .15s; box-shadow: var(--shadow); }
+    .page-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,.12); }
+    .card-img { width: 100%; height: 160px; object-fit: cover; border-radius: 6px; margin-bottom: 14px; }
+    .card-cat { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; background: #667eea22; color: var(--accent); padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
+    .card-title { font-size: 17px; font-weight: 700; margin-bottom: 8px; line-height: 1.3; }
+    .card-excerpt { font-size: 13px; color: var(--text-soft); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .card-meta { font-size: 11px; color: var(--text-muted); margin-top: 12px; }
+
+    /* SINGLE PAGE */
+    #view-page { max-width: 720px; margin: 0 auto; padding: 32px 20px 60px; }
+    #view-category { max-width: 1100px; margin: 0 auto; padding: 48px 20px; }
+    .back-btn { background: none; border: none; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; padding: 0; margin-bottom: 24px; display: flex; align-items: center; gap: 6px; }
+    .page-hero-img { width: 100%; max-height: 380px; object-fit: cover; border-radius: var(--r); margin-bottom: 24px; }
+    .page-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    .page-title { font-size: clamp(24px, 4vw, 36px); font-weight: 900; line-height: 1.2; margin-bottom: 24px; }
+    .page-content { font-size: 16px; line-height: 1.8; }
+    .page-content h2 { font-size: 22px; font-weight: 800; margin: 28px 0 12px; }
+    .page-content h3 { font-size: 18px; font-weight: 700; margin: 22px 0 10px; }
+    .page-content p { margin-bottom: 16px; }
+    .page-content ul, .page-content ol { margin: 0 0 16px 24px; }
+    .page-content li { margin-bottom: 6px; }
+    .page-content img { max-width: 100%; border-radius: 8px; margin: 12px 0; }
+    .page-content a { color: var(--accent); }
+    .page-content blockquote { border-left: 4px solid var(--accent); padding: 12px 16px; margin: 16px 0; background: var(--bg); border-radius: 0 8px 8px 0; color: var(--text-soft); }
+    .empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+    /* TOAST */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1a202c; color: #fff; padding: 10px 20px; border-radius: 24px; font-size: 14px; font-weight: 600; z-index: 9999; transition: transform .3s; pointer-events: none; white-space: nowrap; }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* UPDATE BANNER */
+    #updateBanner { display: none; background: #1c4532; color: #68d391; text-align: center; padding: 10px 20px; font-size: 13px; font-weight: 600; }
+    #updateBanner.show { display: flex; align-items: center; justify-content: center; gap: 12px; }
+
+    /* MODALS */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal-box { background: var(--card); border-radius: 16px; padding: 28px; width: min(360px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 20px; text-align: center; }
+    .modal-input { width: 100%; padding: 11px 14px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--bg); color: var(--text); font-size: 15px; margin-bottom: 12px; outline: none; }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-btn { width: 100%; padding: 11px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .modal-err { font-size: 13px; color: var(--danger); text-align: center; margin-bottom: 10px; min-height: 18px; }
+
+    /* VERSION HISTORY */
+    .ver-modal { background: var(--card); border-radius: 16px; padding: 24px; width: min(440px, 92vw); max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .ver-modal-title { font-size: 17px; font-weight: 800; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .ver-entry { padding: 14px 0; border-bottom: 1px solid var(--border); }
+    .ver-entry:last-child { border-bottom: none; }
+    .ver-entry-top { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .ver-num { font-size: 13px; font-weight: 800; color: var(--accent); }
+    .ver-date { font-size: 12px; color: var(--text-muted); }
+    .ver-summary { font-size: 13px; color: var(--text-soft); }
+    .ver-current { font-size: 10px; font-weight: 700; background: #38a16922; color: var(--success); padding: 2px 8px; border-radius: 20px; }
+
+    /* ADMIN OVERLAY */
+    #admin { position: fixed; inset: 0; background: #0e1117; z-index: 2000; display: none; flex-direction: column; }
+    #admin.open { display: flex; }
+    .admin-topbar { height: 54px; background: #161b27; border-bottom: 1px solid #2a3344; display: flex; align-items: center; padding: 0 20px; gap: 14px; flex-shrink: 0; }
+    .admin-brand { font-size: 15px; font-weight: 900; color: #667eea; }
+    .admin-badge { font-size: 11px; background: #667eea22; color: #667eea; padding: 3px 8px; border-radius: 20px; font-weight: 700; }
+    .admin-exit { margin-left: auto; background: none; border: none; color: #a0aec0; font-size: 13px; cursor: pointer; font-weight: 600; }
+    .admin-exit:hover { color: #fff; }
+    .admin-body { display: flex; flex: 1; overflow: hidden; }
+    .admin-sidebar { width: 190px; background: #161b27; border-right: 1px solid #2a3344; padding: 12px 8px; flex-shrink: 0; overflow-y: auto; }
+    @media (max-width: 640px) { .admin-sidebar { width: 54px; } .a-nav-lbl { display: none; } .a-nav-item { justify-content: center; padding: 8px; } }
+    .a-nav-section { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #4a5568; padding: 4px 10px; margin: 10px 0 4px; }
+    .a-nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #a0aec0; cursor: pointer; transition: all .15s; border: none; background: none; width: 100%; text-align: left; }
+    .a-nav-item:hover { color: #fff; background: #2a3344; }
+    .a-nav-item.active { color: #fff; background: #667eea; }
+    .a-nav-icon { font-size: 15px; flex-shrink: 0; }
+    .admin-main { flex: 1; overflow-y: auto; padding: 24px; color: #e2e8f0; }
+    .a-section { display: none; }
+    .a-section.active { display: block; }
+    .a-heading { font-size: 21px; font-weight: 800; color: #f0f4f8; margin-bottom: 20px; }
+    .a-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: all .15s; }
+    .a-btn-primary { background: #667eea; color: #fff; } .a-btn-primary:hover { background: #5a67d8; }
+    .a-btn-ghost { background: #2a3344; color: #a0aec0; } .a-btn-ghost:hover { background: #3a4455; color: #fff; }
+    .a-btn-danger { background: #c53030; color: #fff; } .a-btn-danger:hover { background: #9b2c2c; }
+    .a-btn-sm { padding: 6px 12px; font-size: 12px; }
+    .a-page-item { background: #161b27; border: 1px solid #2a3344; border-radius: 10px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 14px; }
+    .a-page-info { flex: 1; min-width: 0; }
+    .a-page-title { font-size: 14px; font-weight: 700; color: #f0f4f8; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-page-meta { font-size: 12px; color: #718096; }
+    .a-status-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; }
+    .a-status-badge.pub { background: #1c4532; color: #68d391; } .a-status-badge.draft { background: #2d3748; color: #a0aec0; }
+    .a-form-group { margin-bottom: 16px; }
+    .a-form-label { display: block; font-size: 11px; font-weight: 800; color: #a0aec0; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+    .a-input { width: 100%; padding: 10px 12px; background: #161b27; border: 1.5px solid #2a3344; border-radius: 8px; color: #e2e8f0; font-size: 14px; outline: none; transition: border-color .15s; font-family: inherit; }
+    .a-input:focus { border-color: #667eea; }
+    .a-select { width: 100%; padding: 10px 12px; background: #161b27; border: 1.5px solid #2a3344; border-radius: 8px; color: #e2e8f0; font-size: 14px; outline: none; cursor: pointer; }
+    .a-select:focus { border-color: #667eea; }
+    .edit-cols { display: grid; grid-template-columns: 1fr 270px; gap: 20px; }
+    @media (max-width: 900px) { .edit-cols { grid-template-columns: 1fr; } }
+    .editor-toolbar { background: #1e2535; border: 1.5px solid #2a3344; border-bottom: none; border-radius: 8px 8px 0 0; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 3px; }
+    .e-btn { background: none; border: none; color: #a0aec0; font-size: 13px; font-weight: 700; padding: 5px 8px; border-radius: 6px; cursor: pointer; transition: all .1s; }
+    .e-btn:hover { background: #2a3344; color: #fff; }
+    .e-sep { width: 1px; background: #2a3344; margin: 2px 4px; }
+    .editor-body { background: #161b27; border: 1.5px solid #2a3344; border-radius: 0 0 8px 8px; min-height: 260px; padding: 16px; color: #e2e8f0; font-size: 15px; line-height: 1.7; outline: none; }
+    .editor-body:focus { border-color: #667eea; }
+    .editor-body h2 { font-size: 20px; font-weight: 800; margin: 18px 0 10px; }
+    .editor-body h3 { font-size: 17px; font-weight: 700; margin: 14px 0 8px; }
+    .editor-body p { margin-bottom: 12px; }
+    .editor-body ul, .editor-body ol { margin: 0 0 12px 24px; }
+    .editor-body li { margin-bottom: 4px; }
+    .editor-body img { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+    .editor-body a { color: #667eea; }
+    .editor-body blockquote { border-left: 3px solid #667eea; padding: 8px 14px; margin: 12px 0; color: #a0aec0; background: #1e2535; border-radius: 0 6px 6px 0; }
+    .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-top: 12px; }
+    .media-thumb { background: #161b27; border: 2px solid #2a3344; border-radius: 8px; aspect-ratio: 1; overflow: hidden; cursor: pointer; transition: border-color .15s; position: relative; }
+    .media-thumb:hover { border-color: #667eea; }
+    .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .media-thumb-del { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; cursor: pointer; display: none; align-items: center; justify-content: center; }
+    .media-thumb:hover .media-thumb-del { display: flex; }
+    .media-thumb-name { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.7); color: #fff; font-size: 10px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cat-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #161b27; border: 1px solid #2a3344; border-radius: 8px; margin-bottom: 8px; }
+    .cat-name { flex: 1; font-size: 14px; font-weight: 600; }
+    .cat-count { font-size: 12px; color: #718096; }
+    .publish-info { background: #161b27; border: 1px solid #2a3344; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+    .publish-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; }
+    .publish-label { font-size: 12px; color: #718096; width: 110px; flex-shrink: 0; padding-top: 2px; }
+    .publish-val { font-size: 13px; color: #e2e8f0; }
+    .change-item { padding: 8px 12px; background: #1e2535; border-radius: 6px; font-size: 12px; color: #a0aec0; margin-bottom: 6px; }
+    .change-item b { color: #e2e8f0; }
+    .export-area { width: 100%; background: #0a0e18; border: 1px solid #2a3344; border-radius: 8px; padding: 12px; color: #68d391; font-family: 'Courier New', monospace; font-size: 11px; resize: vertical; min-height: 120px; outline: none; margin: 12px 0; }
+  </style>
+</head>
+<body>
+
+<div id="updateBanner">
+  <span>✨ New content published — your site has been updated!</span>
+  <button onclick="document.getElementById('updateBanner').classList.remove('show')" style="background:none;border:none;color:inherit;cursor:pointer;font-size:18px;line-height:1">×</button>
+</div>
+
+<nav id="site-nav">
+  <div class="nav-inner">
+    <span class="nav-brand" id="navBrand" onclick="showView('home')">Clarity</span>
+    <div class="nav-links" id="navLinks"></div>
+    <div class="nav-right">
+      <button class="ver-btn" id="verBtn" onclick="showVersionHistory()">v1</button>
+      <button class="nav-lock" onclick="openLock()">🔒</button>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <div class="site-view active" id="view-home">
+    <div style="max-width:1100px;margin:0 auto;padding:48px 20px">
+      <div class="hero">
+        <div class="hero-title" id="heroTitle">Clarity</div>
+        <div class="hero-sub" id="heroSub"></div>
+      </div>
+      <div class="section-label">Latest</div>
+      <div class="pages-grid" id="homeGrid"></div>
+    </div>
+  </div>
+  <div class="site-view" id="view-category">
+    <div style="max-width:1100px;margin:0 auto;padding:48px 20px">
+      <div class="section-label" id="catLabel">Category</div>
+      <div class="pages-grid" id="catGrid"></div>
+    </div>
+  </div>
+  <div class="site-view" id="view-page">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <div id="pageHeroImg"></div>
+    <div class="page-meta">
+      <span class="card-cat" id="pageCat"></span>
+      <span style="font-size:12px;color:var(--text-muted)" id="pageDate"></span>
+    </div>
+    <h1 class="page-title" id="pageTitle"></h1>
+    <div class="page-content" id="pageContent"></div>
+  </div>
+</main>
+
+<!-- PASSWORD MODAL -->
+<div class="modal-overlay" id="pwModal">
+  <div class="modal-box">
+    <div class="modal-title">🔒 Admin Access</div>
+    <div class="modal-err" id="pwErr"></div>
+    <input type="password" class="modal-input" id="pwInput" placeholder="Password" onkeydown="if(event.key==='Enter')checkPassword()">
+    <button class="modal-btn" onclick="checkPassword()">Enter</button>
+  </div>
+</div>
+
+<!-- VERSION HISTORY MODAL -->
+<div class="modal-overlay" id="verModal">
+  <div class="ver-modal">
+    <div class="ver-modal-title">
+      <span>📋 Version history</span>
+      <button onclick="document.getElementById('verModal').classList.remove('open')" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted)">×</button>
+    </div>
+    <div id="verList"></div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)">
+      Content is published by the site admin — updates arrive automatically when you visit.
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN OVERLAY -->
+<div id="admin">
+  <div class="admin-topbar">
+    <span class="admin-brand">⚡ Clarity CMS</span>
+    <span class="admin-badge">Admin</span>
+    <button class="admin-exit" onclick="closeAdmin()">← Back to site</button>
+  </div>
+  <div class="admin-body">
+    <nav class="admin-sidebar">
+      <div class="a-nav-section">Content</div>
+      <button class="a-nav-item active" id="anav-pages" onclick="showAdminSection('pages')">
+        <span class="a-nav-icon">📄</span><span class="a-nav-lbl">Pages</span>
+      </button>
+      <button class="a-nav-item" id="anav-categories" onclick="showAdminSection('categories')">
+        <span class="a-nav-icon">🏷️</span><span class="a-nav-lbl">Categories</span>
+      </button>
+      <button class="a-nav-item" id="anav-media" onclick="showAdminSection('media')">
+        <span class="a-nav-icon">🖼️</span><span class="a-nav-lbl">Media</span>
+      </button>
+      <div class="a-nav-section">Publish</div>
+      <button class="a-nav-item" id="anav-publish" onclick="showAdminSection('publish')">
+        <span class="a-nav-icon">📤</span><span class="a-nav-lbl">Submit</span>
+      </button>
+      <div class="a-nav-section">System</div>
+      <button class="a-nav-item" id="anav-settings" onclick="showAdminSection('settings')">
+        <span class="a-nav-icon">⚙️</span><span class="a-nav-lbl">Settings</span>
+      </button>
+    </nav>
+    <div class="admin-main">
+
+      <!-- PAGES LIST -->
+      <div class="a-section active" id="a-pages">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <h2 class="a-heading" style="margin:0">Pages</h2>
+          <button class="a-btn a-btn-primary" onclick="newPage()">+ New Page</button>
+        </div>
+        <div id="adminPagesList"></div>
+      </div>
+
+      <!-- PAGE EDITOR -->
+      <div class="a-section" id="a-edit">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="showAdminSection('pages')">← Pages</button>
+          <h2 class="a-heading" style="margin:0;flex:1" id="editHeading">Page</h2>
+          <button class="a-btn a-btn-primary" onclick="savePage()">💾 Save</button>
+        </div>
+        <div class="edit-cols">
+          <div>
+            <div class="a-form-group">
+              <label class="a-form-label">Title</label>
+              <input type="text" class="a-input" id="editTitle" placeholder="Page title">
+            </div>
+            <div class="a-form-group">
+              <label class="a-form-label">Content</label>
+              <div class="editor-toolbar">
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="exec('bold')"><b>B</b></button>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="exec('italic')"><i>I</i></button>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="exec('underline')"><u>U</u></button>
+                <div class="e-sep"></div>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="execBlock('h2')">H2</button>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="execBlock('h3')">H3</button>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="execBlock('p')">¶</button>
+                <div class="e-sep"></div>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="exec('insertUnorderedList')">• List</button>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="exec('insertOrderedList')">1. List</button>
+                <div class="e-sep"></div>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="execBlock('blockquote')">❝</button>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="insertLink()">🔗</button>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="insertImageFromMedia()">🖼️</button>
+              </div>
+              <div class="editor-body" id="editor" contenteditable="true"></div>
+            </div>
+          </div>
+          <div>
+            <div class="a-form-group">
+              <label class="a-form-label">Category</label>
+              <select class="a-select" id="editCategory"></select>
+            </div>
+            <div class="a-form-group">
+              <label class="a-form-label">Featured Image</label>
+              <div id="editImgPreview"></div>
+              <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <button class="a-btn a-btn-ghost a-btn-sm" onclick="pickFeaturedImage()">Pick image</button>
+                <button class="a-btn a-btn-ghost a-btn-sm" onclick="removeFeaturedImage()">Remove</button>
+              </div>
+            </div>
+            <div class="a-form-group">
+              <label class="a-form-label">Status</label>
+              <select class="a-select" id="editStatus">
+                <option value="published">Published</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
+            <div class="a-form-group">
+              <label class="a-form-label">Slug</label>
+              <input type="text" class="a-input" id="editSlug" placeholder="auto-generated">
+            </div>
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid #2a3344">
+              <button class="a-btn a-btn-danger a-btn-sm" id="editDelBtn" onclick="deletePage()" style="display:none">Delete page</button>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="editId">
+      </div>
+
+      <!-- CATEGORIES -->
+      <div class="a-section" id="a-categories">
+        <h2 class="a-heading">Categories</h2>
+        <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+          <input type="text" class="a-input" id="newCatInput" placeholder="Category name" style="max-width:260px" onkeydown="if(event.key==='Enter')addCategory()">
+          <button class="a-btn a-btn-primary" onclick="addCategory()">Add</button>
+        </div>
+        <div id="adminCatList"></div>
+      </div>
+
+      <!-- MEDIA -->
+      <div class="a-section" id="a-media">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <h2 class="a-heading" style="margin:0">Media Library</h2>
+          <label class="a-btn a-btn-primary" style="cursor:pointer">
+            ↑ Upload
+            <input type="file" accept="image/*" multiple style="display:none" onchange="uploadImages(this)">
+          </label>
+        </div>
+        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images are stored in your browser. Keep them under a few MB each to avoid filling localStorage.</div>
+        <div class="media-grid" id="adminMediaGrid"></div>
+      </div>
+
+      <!-- PUBLISH / SUBMIT -->
+      <div class="a-section" id="a-publish">
+        <h2 class="a-heading">Submit for Publish</h2>
+        <p style="font-size:13px;color:#a0aec0;margin-bottom:20px;line-height:1.6">Edit content locally until you're happy, then use this screen to send your changes to the site admin. They'll update the codebase and push a new published version — which appears automatically next time visitors open the site.</p>
+        <div class="publish-info">
+          <div class="publish-row"><span class="publish-label">Current version</span><span class="publish-val" id="pubCurrentVer">—</span></div>
+          <div class="publish-row"><span class="publish-label">Your changes</span><span class="publish-val" id="pubChangeSummary">—</span></div>
+          <div class="publish-row"><span class="publish-label">Pages</span><span class="publish-val" id="pubPageCount">—</span></div>
+        </div>
+        <div id="pubChangesList" style="margin-bottom:16px"></div>
+        <div class="a-form-group">
+          <label class="a-form-label">Change summary (what did you update?)</label>
+          <input type="text" class="a-input" id="pubSummary" placeholder="e.g. Added 2 blog posts, updated welcome page">
+        </div>
+        <div class="a-form-group">
+          <label class="a-form-label">Admin email</label>
+          <input type="email" class="a-input" id="pubEmail" placeholder="admin@example.com" style="max-width:320px">
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+          <button class="a-btn a-btn-primary" onclick="sendToAdmin()">📧 Email to admin</button>
+          <button class="a-btn a-btn-ghost" onclick="copyExport()">📋 Copy export JSON</button>
+        </div>
+        <div id="exportSection" style="display:none">
+          <label class="a-form-label">Export JSON — paste this into the SITE_CONTENT block in index.html</label>
+          <textarea class="export-area" id="exportArea" readonly></textarea>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="a-section" id="a-settings">
+        <h2 class="a-heading">Settings</h2>
+        <div class="a-form-group">
+          <label class="a-form-label">Site Name</label>
+          <input type="text" class="a-input" id="setSiteName" style="max-width:400px">
+        </div>
+        <div class="a-form-group">
+          <label class="a-form-label">Tagline</label>
+          <input type="text" class="a-input" id="setTagline" style="max-width:400px">
+        </div>
+        <div class="a-form-group">
+          <label class="a-form-label">New Password</label>
+          <div style="display:flex;gap:10px">
+            <input type="password" class="a-input" id="setNewPw" placeholder="New password" style="max-width:260px">
+            <button class="a-btn a-btn-ghost" onclick="changePassword()">Change</button>
+          </div>
+          <div style="font-size:11px;color:#4a5568;margin-top:4px">Stored locally — not server-side authentication</div>
+        </div>
+        <button class="a-btn a-btn-primary" onclick="saveSettings()">Save Settings</button>
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid #2a3344">
+          <button class="a-btn a-btn-danger a-btn-sm" onclick="resetToPublished()">↩ Reset to published version</button>
+          <div style="font-size:11px;color:#4a5568;margin-top:6px">Discards all local edits and reloads the last published content</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const STORAGE_KEY = 'clarityState';
+
+  // ── EMBEDDED PUBLISHED CONTENT ──────────────────────────────────────────────
+  // When admin publishes changes, they replace this object and bump version.
+  // The app detects a newer version and refreshes visitors automatically.
+  const SITE_CONTENT = {
+    version: 1,
+    publishedAt: 1751000000000,
+    adminEmail: '',
+    changelog: [
+      { v: 1, date: 1751000000000, summary: 'Initial launch — welcome content, getting started guides, and sample blog posts' }
+    ],
+    siteTitle: 'Clarity',
+    siteTagline: 'A beautifully simple serverless CMS',
+    categories: ['General', 'Blog', 'Guides', 'Updates'],
+    pages: [
+      {
+        id: 'p1', title: 'Welcome to Clarity', slug: 'welcome', category: 'General',
+        content: '<h2>Hello and welcome! 👋</h2><p>This is <strong>Clarity</strong> — a fully serverless, browser-based content management system. Everything is stored right here in your browser, so it works offline, costs nothing to host, and keeps your content completely private.</p><h2>What you can do</h2><ul><li>Create and edit pages with a rich-text editor</li><li>Organise content into categories</li><li>Upload and embed images from your device</li><li>Publish pages or save them as drafts</li><li>Customise the site name, tagline and password</li></ul><p>To open the admin panel, click the 🔒 icon in the top-right corner. The default password is <strong>admin1234</strong> — change it in Settings once you\'re in.</p><blockquote>Your content, your browser, your rules.</blockquote>',
+        featuredImage: null, status: 'published', createdAt: 1751000000000, updatedAt: 1751000000000
+      },
+      {
+        id: 'p2', title: 'Getting Started in 5 Minutes', slug: 'getting-started', category: 'Guides',
+        content: '<h2>Set up your site quickly</h2><p>Clarity is designed to get you writing in under five minutes. Here\'s the fast path.</p><h3>1 · Customise your site</h3><p>Go to <strong>Settings</strong> in the admin panel and update your site name and tagline. They appear on the homepage and browser tab.</p><h3>2 · Set up categories</h3><p>Head to <strong>Categories</strong> and create the topics that work for you — Blog, News, Projects, Recipes, anything. Categories appear as nav links once they have at least one published page.</p><h3>3 · Write your first page</h3><p>Click <strong>Pages → New Page</strong>, give it a title, pick a category, write your content using the editor toolbar, and hit Save.</p><h3>4 · Upload images</h3><p>Go to <strong>Media</strong> to upload images from your device. They\'re stored in your browser and can be inserted into any page editor with the 🖼️ button.</p><h3>5 · Submit for publish</h3><p>When you\'re happy with your changes, go to <strong>Submit</strong>, add a brief change summary, and email your edits to the site admin. They\'ll push the update, and visitors will see it on their next visit — automatically.</p>',
+        featuredImage: null, status: 'published', createdAt: 1750900000000, updatedAt: 1750950000000
+      },
+      {
+        id: 'p3', title: 'How the Publish Workflow Works', slug: 'publish-workflow', category: 'Guides',
+        content: '<h2>Local edits → admin publish → live for everyone</h2><p>Clarity uses a simple two-step workflow that keeps content quality high while keeping the infrastructure cost at zero.</p><h3>Step 1 — Edit locally</h3><p>The CMS admin panel runs entirely in your browser. Create pages, upload images, rearrange categories — all without touching a server. Your changes are saved in <em>localStorage</em> as you go, so you can close the tab and come back later without losing anything.</p><h3>Step 2 — Submit to admin</h3><p>When you\'re ready to go live, open the <strong>Submit</strong> section in the admin panel. Write a brief summary of what changed, then click <em>Email to admin</em>. This opens a pre-filled email with your full content export attached.</p><h3>Step 3 — Admin publishes</h3><p>The site admin pastes your export into the codebase, bumps the version number, and adds a changelog entry. Once pushed to GitHub Pages (or whatever host), the new version is live.</p><h3>Step 4 — Visitors get updated automatically</h3><p>The app checks for a newer published version on every visit. If the version in the HTML is newer than what\'s stored locally, it refreshes the content automatically — visitors always see the latest, no cache-clearing needed.</p><blockquote>Think of it as a pull-request workflow for your content — propose changes, get them reviewed, publish when ready.</blockquote>',
+        featuredImage: null, status: 'published', createdAt: 1750800000000, updatedAt: 1750860000000
+      },
+      {
+        id: 'p4', title: 'Rich-Text Editor Tips', slug: 'editor-tips', category: 'Blog',
+        content: '<h2>Getting the most from the editor</h2><p>The built-in editor handles everything you need for well-formatted pages. Here are the tricks worth knowing.</p><h3>Keyboard shortcuts</h3><ul><li><strong>Ctrl+B</strong> (Cmd+B on Mac) — Bold</li><li><strong>Ctrl+I</strong> — Italic</li><li><strong>Ctrl+U</strong> — Underline</li></ul><h3>The toolbar</h3><ul><li><strong>H2 / H3</strong> — Format the selected line as a section or sub-section heading</li><li><strong>¶</strong> — Return a heading back to normal paragraph text</li><li><strong>• List / 1. List</strong> — Start a bullet or numbered list</li><li><strong>❝</strong> — Format the selected text as a pull-quote</li><li><strong>🔗</strong> — Wrap selected text in a hyperlink</li><li><strong>🖼️</strong> — Insert an image from your Media Library at the cursor position</li></ul><h3>Inserting images</h3><p>Upload your images in the <strong>Media</strong> section first. Then in the editor, position your cursor where you want the image, and click 🖼️. A picker will show all your uploaded images.</p><blockquote>Tip: keep images under 500 KB each — localStorage has a ~5 MB limit shared across all your content.</blockquote>',
+        featuredImage: null, status: 'published', createdAt: 1750700000000, updatedAt: 1750720000000
+      },
+      {
+        id: 'p5', title: 'Roadmap & Upcoming Features', slug: 'roadmap', category: 'Updates',
+        content: '<h2>What\'s coming next</h2><p>Clarity is actively evolving. Here\'s a snapshot of what\'s on the roadmap.</p><h3>Planned</h3><ul><li><strong>Export / Import</strong> — Download your entire site as a JSON file and restore it on any device</li><li><strong>Page ordering</strong> — Drag pages to reorder them in the navigation</li><li><strong>Tags</strong> — Multi-tag pages for richer filtering</li><li><strong>Search</strong> — Full-text search across all published content</li><li><strong>Custom themes</strong> — Choose from a set of colour schemes for the public site</li></ul><h3>Under consideration</h3><ul><li>Scheduled publishing (publish at a future date)</li><li>Simple analytics (page views, stored locally)</li><li>Comments (visitor-submitted, stored locally)</li></ul><p>Have a feature request? Use the <strong>Submit</strong> section in the admin to send it through with your next content update.</p>',
+        featuredImage: null, status: 'draft', createdAt: 1750600000000, updatedAt: 1750650000000
+      }
+    ]
+  };
+  // ── END EMBEDDED CONTENT ────────────────────────────────────────────────────
+
+  let state;
+  let editingId = null;
+  let editingFeaturedImage = null;
+  let prevView = 'home';
+  let prevCat = null;
+  let currentCat = null;
+  let currentView = 'home';
+  let mediaPickerCb = null;
+  let toastTimer;
+
+  // ── STATE ────────────────────────────────────────────────────────────────────
+
+  function loadState() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if (!stored || stored.version < SITE_CONTENT.version) {
+        const fresh = {
+          ...JSON.parse(JSON.stringify(SITE_CONTENT)),
+          password: stored ? (stored.password || 'admin1234') : 'admin1234',
+          images: stored ? (stored.images || []) : [],
+          adminEmail: stored ? (stored.adminEmail || '') : ''
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+        if (stored && stored.version < SITE_CONTENT.version) {
+          document.getElementById('updateBanner').classList.add('show');
+        }
+        return fresh;
+      }
+      return stored;
+    } catch(e) { return {...JSON.parse(JSON.stringify(SITE_CONTENT)), password: 'admin1234', images: [], adminEmail: ''}; }
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch(e) {
+      showToast('⚠️ Storage full — delete some images');
+    }
+  }
+
+  // ── PUBLIC SITE ──────────────────────────────────────────────────────────────
+
+  function initSite() {
+    document.title = state.siteTitle;
+    document.getElementById('heroTitle').textContent = state.siteTitle;
+    document.getElementById('heroSub').textContent = state.siteTagline;
+    document.getElementById('navBrand').textContent = state.siteTitle;
+    document.getElementById('verBtn').textContent = 'v' + SITE_CONTENT.version;
+    renderNavLinks();
+    showView('home');
+  }
+
+  function renderNavLinks() {
+    let html = `<button class="nav-link${currentView==='home'?' active':''}" onclick="showView('home')">Home</button>`;
+    state.categories.forEach(cat => {
+      if (state.pages.some(p => p.category === cat && p.status === 'published')) {
+        html += `<button class="nav-link${currentCat===cat&&currentView==='category'?' active':''}" onclick="showCategory('${escHtml(cat)}')">${escHtml(cat)}</button>`;
+      }
+    });
+    document.getElementById('navLinks').innerHTML = html;
+  }
+
+  function showView(name) {
+    document.querySelectorAll('.site-view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + name).classList.add('active');
+    currentView = name;
+    window.scrollTo(0, 0);
+    renderNavLinks();
+    if (name === 'home') renderHomeGrid();
+  }
+
+  function renderHomeGrid() {
+    const pub = state.pages.filter(p => p.status === 'published').sort((a,b) => b.updatedAt - a.updatedAt);
+    const grid = document.getElementById('homeGrid');
+    grid.innerHTML = pub.length ? pub.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">✍️</div><p>No published pages yet.</p></div>`;
+  }
+
+  function showCategory(cat) {
+    prevView = currentView; prevCat = currentCat;
+    currentCat = cat;
+    document.getElementById('catLabel').textContent = cat;
+    const pages = state.pages.filter(p => p.category === cat && p.status === 'published').sort((a,b) => b.updatedAt - a.updatedAt);
+    document.getElementById('catGrid').innerHTML = pages.length ? pages.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">📭</div><p>No pages in "${cat}" yet.</p></div>`;
+    showView('category');
+  }
+
+  function pageCardHtml(p) {
+    const d = new Date(p.updatedAt).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'});
+    return `<div class="page-card" onclick="showPage('${p.id}')">
+      ${p.featuredImage ? `<img class="card-img" src="${p.featuredImage}" alt="" loading="lazy">` : ''}
+      ${p.category ? `<span class="card-cat">${escHtml(p.category)}</span>` : ''}
+      <div class="card-title">${escHtml(p.title)}</div>
+      <div class="card-excerpt">${escHtml(stripHtml(p.content).slice(0,140))}</div>
+      <div class="card-meta">${d}</div>
+    </div>`;
+  }
+
+  function showPage(id) {
+    const page = state.pages.find(p => p.id === id);
+    if (!page) return;
+    prevView = currentView; prevCat = currentCat;
+    const d = new Date(page.updatedAt).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'});
+    document.getElementById('pageHeroImg').innerHTML = page.featuredImage ? `<img class="page-hero-img" src="${page.featuredImage}" alt="">` : '';
+    document.getElementById('pageCat').textContent = page.category || '';
+    document.getElementById('pageDate').textContent = d;
+    document.getElementById('pageTitle').textContent = page.title;
+    document.getElementById('pageContent').innerHTML = page.content;
+    showView('page');
+  }
+
+  function goBack() {
+    if (prevView === 'category' && prevCat) showCategory(prevCat);
+    else showView('home');
+  }
+
+  // ── VERSION HISTORY ──────────────────────────────────────────────────────────
+
+  function showVersionHistory() {
+    const list = document.getElementById('verList');
+    list.innerHTML = [...SITE_CONTENT.changelog].reverse().map(entry => {
+      const d = new Date(entry.date).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'});
+      const isCurrent = entry.v === SITE_CONTENT.version;
+      return `<div class="ver-entry">
+        <div class="ver-entry-top">
+          <span class="ver-num">v${entry.v}</span>
+          <span class="ver-date">${d}</span>
+          ${isCurrent ? '<span class="ver-current">current</span>' : ''}
+        </div>
+        <div class="ver-summary">${escHtml(entry.summary)}</div>
+      </div>`;
+    }).join('');
+    document.getElementById('verModal').classList.add('open');
+  }
+
+  document.getElementById('verModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('verModal')) document.getElementById('verModal').classList.remove('open');
+  });
+
+  // ── ADMIN ACCESS ─────────────────────────────────────────────────────────────
+
+  function openLock() {
+    document.getElementById('pwModal').classList.add('open');
+    document.getElementById('pwInput').value = '';
+    document.getElementById('pwErr').textContent = '';
+    setTimeout(() => document.getElementById('pwInput').focus(), 100);
+  }
+
+  function checkPassword() {
+    if (document.getElementById('pwInput').value === state.password) {
+      document.getElementById('pwModal').classList.remove('open');
+      openAdmin();
+    } else {
+      document.getElementById('pwErr').textContent = 'Incorrect password';
+      document.getElementById('pwInput').select();
+    }
+  }
+
+  document.getElementById('pwModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('pwModal')) document.getElementById('pwModal').classList.remove('open');
+  });
+
+  // ── ADMIN ────────────────────────────────────────────────────────────────────
+
+  function openAdmin() {
+    document.getElementById('admin').classList.add('open');
+    showAdminSection('pages');
+  }
+
+  function closeAdmin() {
+    document.getElementById('admin').classList.remove('open');
+    initSite();
+  }
+
+  function showAdminSection(name) {
+    document.querySelectorAll('.a-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.a-nav-item').forEach(s => s.classList.remove('active'));
+    document.getElementById('a-' + name).classList.add('active');
+    const navItem = document.getElementById('anav-' + name);
+    if (navItem) navItem.classList.add('active');
+    if (name === 'pages') renderAdminPages();
+    else if (name === 'categories') renderAdminCategories();
+    else if (name === 'media') renderAdminMedia();
+    else if (name === 'publish') renderPublish();
+    else if (name === 'settings') loadSettings();
+  }
+
+  // ── PAGES ────────────────────────────────────────────────────────────────────
+
+  function renderAdminPages() {
+    const list = document.getElementById('adminPagesList');
+    if (!state.pages.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">📄</div><p>No pages yet.</p></div>`; return; }
+    list.innerHTML = [...state.pages].sort((a,b) => b.updatedAt - a.updatedAt).map(p => {
+      const d = new Date(p.updatedAt).toLocaleDateString(undefined, {month:'short',day:'numeric',year:'numeric'});
+      return `<div class="a-page-item">
+        <div class="a-page-info">
+          <div class="a-page-title">${escHtml(p.title)}</div>
+          <div class="a-page-meta">${p.category ? escHtml(p.category)+' · ' : ''}${d}</div>
+        </div>
+        <span class="a-status-badge ${p.status==='published'?'pub':'draft'}">${p.status}</span>
+        <button class="a-btn a-btn-ghost a-btn-sm" onclick="editPage('${p.id}')">Edit</button>
+      </div>`;
+    }).join('');
+  }
+
+  function newPage() {
+    editingId = null; editingFeaturedImage = null;
+    document.getElementById('editHeading').textContent = 'New Page';
+    document.getElementById('editId').value = '';
+    document.getElementById('editTitle').value = '';
+    document.getElementById('editor').innerHTML = '';
+    document.getElementById('editStatus').value = 'published';
+    document.getElementById('editSlug').value = '';
+    document.getElementById('editDelBtn').style.display = 'none';
+    updateImgPreview(); populateCatSelect('');
+    document.getElementById('a-pages').classList.remove('active');
+    document.getElementById('a-edit').classList.add('active');
+    document.getElementById('anav-pages').classList.add('active');
+  }
+
+  function editPage(id) {
+    const page = state.pages.find(p => p.id === id);
+    if (!page) return;
+    editingId = id; editingFeaturedImage = page.featuredImage || null;
+    document.getElementById('editHeading').textContent = 'Edit Page';
+    document.getElementById('editId').value = id;
+    document.getElementById('editTitle').value = page.title;
+    document.getElementById('editor').innerHTML = page.content;
+    document.getElementById('editStatus').value = page.status;
+    document.getElementById('editSlug').value = page.slug;
+    document.getElementById('editDelBtn').style.display = 'inline-flex';
+    updateImgPreview(); populateCatSelect(page.category);
+    document.getElementById('a-pages').classList.remove('active');
+    document.getElementById('a-edit').classList.add('active');
+    document.getElementById('anav-pages').classList.add('active');
+  }
+
+  function populateCatSelect(selected) {
+    document.getElementById('editCategory').innerHTML =
+      `<option value="">No category</option>` +
+      state.categories.map(c => `<option value="${escHtml(c)}"${c===selected?' selected':''}>${escHtml(c)}</option>`).join('');
+  }
+
+  function updateImgPreview() {
+    document.getElementById('editImgPreview').innerHTML = editingFeaturedImage
+      ? `<img src="${editingFeaturedImage}" style="width:100%;border-radius:8px;max-height:140px;object-fit:cover">`
+      : `<div style="background:#1e2535;border-radius:8px;height:70px;display:flex;align-items:center;justify-content:center;color:#4a5568;font-size:12px">No image</div>`;
+  }
+
+  function savePage() {
+    const title = document.getElementById('editTitle').value.trim();
+    if (!title) { showToast('Add a title first'); return; }
+    const content = document.getElementById('editor').innerHTML;
+    const category = document.getElementById('editCategory').value;
+    const status = document.getElementById('editStatus').value;
+    const slug = document.getElementById('editSlug').value.trim() || slugify(title);
+    const now = Date.now();
+    if (editingId) {
+      const idx = state.pages.findIndex(p => p.id === editingId);
+      if (idx !== -1) state.pages[idx] = {...state.pages[idx], title, content, category, status, slug, featuredImage: editingFeaturedImage, updatedAt: now};
+      showToast('✅ Saved');
+    } else {
+      const id = 'p' + now;
+      state.pages.push({id, title, content, category, status, slug, featuredImage: editingFeaturedImage, createdAt: now, updatedAt: now});
+      editingId = id;
+      document.getElementById('editId').value = id;
+      document.getElementById('editDelBtn').style.display = 'inline-flex';
+      showToast('✅ Page created');
+    }
+    saveState();
+  }
+
+  function deletePage() {
+    if (!editingId || !confirm('Delete this page? This cannot be undone.')) return;
+    state.pages = state.pages.filter(p => p.id !== editingId);
+    saveState(); showToast('Page deleted');
+    showAdminSection('pages');
+  }
+
+  // ── EDITOR ───────────────────────────────────────────────────────────────────
+
+  function exec(cmd) { document.getElementById('editor').focus(); document.execCommand(cmd, false, null); }
+  function execBlock(tag) { document.getElementById('editor').focus(); document.execCommand('formatBlock', false, tag); }
+
+  function insertLink() {
+    const url = prompt('Enter URL:');
+    if (url) { document.getElementById('editor').focus(); document.execCommand('createLink', false, url); }
+  }
+
+  function insertImageFromMedia() { openMediaPicker(url => { document.getElementById('editor').focus(); document.execCommand('insertImage', false, url); }); }
+  function pickFeaturedImage() { openMediaPicker(url => { editingFeaturedImage = url; updateImgPreview(); }); }
+  function removeFeaturedImage() { editingFeaturedImage = null; updateImgPreview(); }
+
+  document.getElementById('editTitle').addEventListener('input', function() {
+    if (!editingId) document.getElementById('editSlug').value = slugify(this.value);
+  });
+
+  // ── MEDIA ────────────────────────────────────────────────────────────────────
+
+  function uploadImages(input) {
+    const files = Array.from(input.files);
+    let done = 0;
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        state.images.push({id: 'img'+Date.now()+Math.random().toString(36).slice(2), name: file.name, data: e.target.result});
+        if (++done === files.length) { saveState(); renderAdminMedia(); showToast(`✅ ${files.length} image${files.length>1?'s':''} uploaded`); }
+      };
+      reader.readAsDataURL(file);
+    });
+    input.value = '';
+  }
+
+  function renderAdminMedia() {
+    const grid = document.getElementById('adminMediaGrid');
+    if (!state.images.length) { grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🖼️</div><p>No images yet.</p></div>`; return; }
+    grid.innerHTML = state.images.map(img => `
+      <div class="media-thumb">
+        <img src="${img.data}" alt="${escHtml(img.name)}" loading="lazy">
+        <div class="media-thumb-name">${escHtml(img.name)}</div>
+        <button class="media-thumb-del" onclick="deleteImage('${img.id}',event)">✕</button>
+      </div>`).join('');
+  }
+
+  function deleteImage(id, e) {
+    e.stopPropagation();
+    if (!confirm('Delete this image?')) return;
+    state.images = state.images.filter(i => i.id !== id);
+    saveState(); renderAdminMedia(); showToast('Image deleted');
+  }
+
+  function openMediaPicker(cb) {
+    if (!state.images.length) { showToast('Upload images in Media first'); return; }
+    mediaPickerCb = cb;
+    const el = document.createElement('div');
+    el.id = 'mediaPicker';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:3000;display:flex;align-items:center;justify-content:center';
+    el.innerHTML = `
+      <div style="background:#161b27;border-radius:16px;padding:24px;width:min(580px,94vw);max-height:80vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="font-size:16px;font-weight:800;color:#f0f4f8">Pick an image</div>
+          <button onclick="document.getElementById('mediaPicker').remove()" style="background:none;border:none;color:#a0aec0;font-size:22px;cursor:pointer">×</button>
+        </div>
+        <div class="media-grid">${state.images.map(img => `<div class="media-thumb" onclick="mediaPickerSelect('${img.id}')"><img src="${img.data}" alt="${escHtml(img.name)}" loading="lazy"><div class="media-thumb-name">${escHtml(img.name)}</div></div>`).join('')}</div>
+      </div>`;
+    document.body.appendChild(el);
+  }
+
+  function mediaPickerSelect(id) {
+    const img = state.images.find(i => i.id === id);
+    if (!img || !mediaPickerCb) return;
+    mediaPickerCb(img.data);
+    mediaPickerCb = null;
+    const picker = document.getElementById('mediaPicker');
+    if (picker) picker.remove();
+  }
+
+  // ── CATEGORIES ───────────────────────────────────────────────────────────────
+
+  function renderAdminCategories() {
+    const list = document.getElementById('adminCatList');
+    if (!state.categories.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">🏷️</div><p>No categories yet.</p></div>`; return; }
+    list.innerHTML = state.categories.map(cat => {
+      const count = state.pages.filter(p => p.category === cat).length;
+      return `<div class="cat-item">
+        <span class="cat-name">${escHtml(cat)}</span>
+        <span class="cat-count">${count} page${count!==1?'s':''}</span>
+        ${count===0 ? `<button class="a-btn a-btn-danger a-btn-sm" onclick="deleteCategory('${escHtml(cat)}')">Delete</button>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  function addCategory() {
+    const name = document.getElementById('newCatInput').value.trim();
+    if (!name) return;
+    if (state.categories.includes(name)) { showToast('Already exists'); return; }
+    state.categories.push(name); saveState();
+    document.getElementById('newCatInput').value = '';
+    renderAdminCategories(); showToast(`✅ "${name}" added`);
+  }
+
+  function deleteCategory(name) {
+    state.categories = state.categories.filter(c => c !== name);
+    saveState(); renderAdminCategories();
+  }
+
+  // ── PUBLISH / SUBMIT ─────────────────────────────────────────────────────────
+
+  function renderPublish() {
+    const embedded = SITE_CONTENT.pages;
+    const local = state.pages;
+    const added = local.filter(p => !embedded.find(e => e.id === p.id));
+    const modified = local.filter(p => {
+      const orig = embedded.find(e => e.id === p.id);
+      return orig && (orig.title !== p.title || orig.content !== p.content || orig.status !== p.status || orig.category !== p.category);
+    });
+    const deleted = embedded.filter(e => !local.find(p => p.id === e.id));
+    const hasChanges = added.length || modified.length || deleted.length || state.siteTitle !== SITE_CONTENT.siteTitle || state.siteTagline !== SITE_CONTENT.siteTagline;
+
+    document.getElementById('pubCurrentVer').textContent = `v${SITE_CONTENT.version}`;
+    document.getElementById('pubChangeSummary').textContent = hasChanges ? `${added.length} added, ${modified.length} modified, ${deleted.length} removed` : 'No changes since last publish';
+    document.getElementById('pubPageCount').textContent = `${local.filter(p=>p.status==='published').length} published, ${local.filter(p=>p.status==='draft').length} draft`;
+
+    let changesHtml = '';
+    if (!hasChanges) { changesHtml = `<div style="color:#718096;font-size:13px;margin-bottom:12px">Your local content matches the published version.</div>`; }
+    else {
+      if (state.siteTitle !== SITE_CONTENT.siteTitle) changesHtml += `<div class="change-item">⚙️ Site name changed to <b>${escHtml(state.siteTitle)}</b></div>`;
+      if (state.siteTagline !== SITE_CONTENT.siteTagline) changesHtml += `<div class="change-item">⚙️ Tagline updated</div>`;
+      added.forEach(p => { changesHtml += `<div class="change-item">✅ New page: <b>${escHtml(p.title)}</b> (${p.status})</div>`; });
+      modified.forEach(p => { changesHtml += `<div class="change-item">✏️ Updated: <b>${escHtml(p.title)}</b></div>`; });
+      deleted.forEach(p => { changesHtml += `<div class="change-item">🗑️ Deleted: <b>${escHtml(p.title)}</b></div>`; });
+    }
+    document.getElementById('pubChangesList').innerHTML = changesHtml;
+    document.getElementById('pubEmail').value = state.adminEmail || '';
+  }
+
+  function getExportJson() {
+    const exportData = {
+      version: SITE_CONTENT.version + 1,
+      publishedAt: Date.now(),
+      adminEmail: state.adminEmail || '',
+      changelog: [
+        ...SITE_CONTENT.changelog,
+        { v: SITE_CONTENT.version + 1, date: Date.now(), summary: document.getElementById('pubSummary').value.trim() || 'Content update' }
+      ],
+      siteTitle: state.siteTitle,
+      siteTagline: state.siteTagline,
+      categories: state.categories,
+      pages: state.pages.map(p => ({...p, featuredImage: p.featuredImage || null}))
+    };
+    return JSON.stringify(exportData, null, 2);
+  }
+
+  function sendToAdmin() {
+    const email = document.getElementById('pubEmail').value.trim();
+    const summary = document.getElementById('pubSummary').value.trim() || 'Content update';
+    state.adminEmail = email;
+    saveState();
+    const json = getExportJson();
+    const subject = `${state.siteTitle} — content update (v${SITE_CONTENT.version + 1})`;
+    const body = `Hi,\n\nPlease publish this content update to the site.\n\nChange summary: ${summary}\n\n--- SITE_CONTENT (paste into index.html replacing the existing SITE_CONTENT block) ---\n\n${json}\n\nThank you!`;
+    if (email) {
+      window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    } else {
+      // No email set — copy to clipboard
+      navigator.clipboard.writeText(body).then(() => showToast('📋 Copied to clipboard — paste into your email')).catch(() => {
+        document.getElementById('exportSection').style.display = 'block';
+        document.getElementById('exportArea').value = body;
+        showToast('Copy the text below and paste into your email');
+      });
+    }
+  }
+
+  function copyExport() {
+    const json = getExportJson();
+    document.getElementById('exportSection').style.display = 'block';
+    document.getElementById('exportArea').value = json;
+    navigator.clipboard.writeText(json).then(() => showToast('✅ JSON copied to clipboard')).catch(() => showToast('Select and copy the text below'));
+  }
+
+  // ── SETTINGS ─────────────────────────────────────────────────────────────────
+
+  function loadSettings() {
+    document.getElementById('setSiteName').value = state.siteTitle;
+    document.getElementById('setTagline').value = state.siteTagline;
+    document.getElementById('setNewPw').value = '';
+  }
+
+  function saveSettings() {
+    state.siteTitle = document.getElementById('setSiteName').value.trim() || state.siteTitle;
+    state.siteTagline = document.getElementById('setTagline').value.trim();
+    saveState(); showToast('✅ Settings saved');
+  }
+
+  function changePassword() {
+    const pw = document.getElementById('setNewPw').value;
+    if (!pw || pw.length < 4) { showToast('Password must be at least 4 characters'); return; }
+    state.password = pw; saveState();
+    document.getElementById('setNewPw').value = '';
+    showToast('✅ Password changed');
+  }
+
+  function resetToPublished() {
+    if (!confirm('Discard all local edits and reset to the published version?')) return;
+    const fresh = {...JSON.parse(JSON.stringify(SITE_CONTENT)), password: state.password, images: state.images, adminEmail: state.adminEmail || ''};
+    state = fresh; saveState();
+    showToast('✅ Reset to published version');
+    loadSettings();
+  }
+
+  // ── UTILS ────────────────────────────────────────────────────────────────────
+
+  function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function stripHtml(h) { const t=document.createElement('div'); t.innerHTML=h; return t.textContent||t.innerText||''; }
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  // ── INIT ─────────────────────────────────────────────────────────────────────
+
+  state = loadState();
+  initSite();
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+</script>
+</body>
+</html>
