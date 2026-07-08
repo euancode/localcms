@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#667eea">
-  <title>Clarity</title>
+  <title>LocalCMS</title>
   <link rel="manifest" href="manifest.json">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -188,7 +188,7 @@
 
 <nav id="site-nav">
   <div class="nav-inner">
-    <span class="nav-brand" id="navBrand" onclick="showView('home')">Clarity</span>
+    <span class="nav-brand" id="navBrand" onclick="showView('home')">LocalCMS</span>
     <div class="nav-links" id="navLinks"></div>
     <div class="nav-right">
       <button class="ver-btn" id="verBtn" onclick="showVersionHistory()">v1</button>
@@ -202,7 +202,7 @@
   <div class="site-view active" id="view-home">
     <div style="max-width:1100px;margin:0 auto;padding:48px 20px">
       <div class="hero">
-        <div class="hero-title" id="heroTitle">Clarity</div>
+        <div class="hero-title" id="heroTitle">LocalCMS</div>
         <div class="hero-sub" id="heroSub">Loading…</div>
       </div>
       <div class="section-label">Latest</div>
@@ -254,7 +254,7 @@
 <!-- ADMIN OVERLAY -->
 <div id="admin">
   <div class="admin-topbar">
-    <span class="admin-brand">⚡ Clarity CMS</span>
+    <span class="admin-brand">⚡ LocalCMS</span>
     <span class="admin-badge">Admin</span>
     <button class="admin-exit" onclick="closeAdmin()">← Back to site</button>
   </div>
@@ -476,7 +476,7 @@
         const cached = JSON.parse(localStorage.getItem(CONTENT_CACHE_KEY) || 'null');
         if (cached) return cached;
       } catch(e2) {}
-      return { version: 0, publishedAt: Date.now(), adminEmail: '', changelog: [], siteTitle: 'Clarity', siteTagline: '', categories: [], pages: [] };
+      return { version: 0, publishedAt: Date.now(), adminEmail: '', changelog: [], siteTitle: 'LocalCMS', siteTagline: '', categories: [], pages: [] };
     }
   }
 
