@@ -94,6 +94,7 @@
     .modal-err { font-size: 13px; color: var(--danger); text-align: center; margin-bottom: 10px; min-height: 18px; }
 
     /* VERSION HISTORY */
+    #verModal { z-index: 2500; }
     .ver-modal { background: var(--card); border-radius: 16px; padding: 24px; width: min(440px, 92vw); max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
     .ver-modal-title { font-size: 17px; font-weight: 800; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
     .ver-entry { padding: 14px 0; border-bottom: 1px solid var(--border); }
@@ -276,6 +277,9 @@
       <button class="a-nav-item" id="anav-publish" onclick="showAdminSection('publish')">
         <span class="a-nav-icon">📤</span><span class="a-nav-lbl">Submit</span>
       </button>
+      <button class="a-nav-item" onclick="showVersionHistory()">
+        <span class="a-nav-icon">📋</span><span class="a-nav-lbl">Version History</span>
+      </button>
       <div class="a-nav-section">System</div>
       <button class="a-nav-item" id="anav-settings" onclick="showAdminSection('settings')">
         <span class="a-nav-icon">⚙️</span><span class="a-nav-lbl">Settings</span>
@@ -347,8 +351,9 @@
               </select>
             </div>
             <div class="a-form-group">
-              <label class="a-form-label">Slug</label>
+              <label class="a-form-label">Page URL</label>
               <input type="text" class="a-input" id="editSlug" placeholder="auto-generated">
+              <div style="font-size:11px;color:#4a5568;margin-top:4px">This is the page's web address: yoursite.com/?page=<span id="editSlugPreview">this-value</span></div>
             </div>
             <div style="margin-top:16px;padding-top:16px;border-top:1px solid #2a3344">
               <button class="a-btn a-btn-danger a-btn-sm" id="editDelBtn" onclick="deletePage()" style="display:none">Delete page</button>
@@ -406,9 +411,10 @@
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
           <button class="a-btn a-btn-primary" onclick="sendToAdmin()">📧 Email to admin</button>
           <button class="a-btn a-btn-ghost" onclick="downloadPublishBundle()">⬇️ Download content.json</button>
+          <button class="a-btn a-btn-ghost" onclick="downloadSitemap()">🗺️ Download sitemap.xml</button>
           <button class="a-btn a-btn-ghost" onclick="copyExport()">📋 Copy export JSON</button>
         </div>
-        <div style="font-size:11px;color:#4a5568;margin-bottom:16px">Email: on mobile this opens your share sheet so you can attach the file to Mail; on desktop it downloads the file and opens a blank email for you to attach it to. Download: grabs content.json straight away — drop it into your FTP client (or git repo) to overwrite the one on the server, no email needed.</div>
+        <div style="font-size:11px;color:#4a5568;margin-bottom:16px">Email: on mobile this opens your share sheet so you can attach the files to Mail; on desktop it downloads them and opens a blank email for you to attach them to. Download: grabs content.json (and/or sitemap.xml) straight away — drop them into your FTP client (or git repo) alongside the existing files, no email needed. Set your Site URL in Settings so sitemap.xml has the right domain.</div>
         <div id="exportSection" style="display:none">
           <label class="a-form-label">Export JSON — save this as content.json and upload it, replacing the existing file on the server</label>
           <textarea class="export-area" id="exportArea" readonly></textarea>
@@ -421,6 +427,11 @@
         <div class="a-form-group">
           <label class="a-form-label">Site Name</label>
           <input type="text" class="a-input" id="setSiteName" style="max-width:400px">
+        </div>
+        <div class="a-form-group">
+          <label class="a-form-label">Site URL</label>
+          <input type="url" class="a-input" id="setSiteUrl" placeholder="https://example.com" style="max-width:400px">
+          <div style="font-size:11px;color:#4a5568;margin-top:4px">Used to build absolute links in sitemap.xml. Defaults to this browser's current address until you set the real one.</div>
         </div>
         <div class="a-form-group">
           <label class="a-form-label">Tagline</label>
@@ -478,7 +489,7 @@
         const cached = JSON.parse(localStorage.getItem(CONTENT_CACHE_KEY) || 'null');
         if (cached) return cached;
       } catch(e2) {}
-      return { version: 0, publishedAt: Date.now(), adminEmail: '', changelog: [], siteTitle: 'LocalCMS', siteTagline: '', categories: [], pages: [] };
+      return { version: 0, publishedAt: Date.now(), adminEmail: '', changelog: [], siteTitle: 'LocalCMS', siteTagline: '', siteUrl: '', categories: [], pages: [] };
     }
   }
 
@@ -543,7 +554,6 @@
     updateVerBtnIndicator();
     applyThemeColor(state.themeColor);
     renderNavLinks();
-    showView('home');
   }
 
   function renderNavLinks() {
@@ -556,7 +566,29 @@
     document.getElementById('navLinks').innerHTML = html;
   }
 
-  function showView(name) {
+  // ── ROUTING ──────────────────────────────────────────────────────────────────
+  // Deep links live entirely in the query string (?page=<url path>, ?category=<name>)
+  // so the actual requested file never changes — this works on any static host
+  // with zero server-side rewrite config, unlike path-based SPA routing.
+
+  function navigateUrl(url, replace) {
+    if (replace) history.replaceState(null, '', url);
+    else history.pushState(null, '', url);
+  }
+
+  function applyRouteFromLocation(replace) {
+    const params = new URLSearchParams(location.search);
+    const pagePath = params.get('page');
+    const cat = params.get('category');
+    const page = pagePath ? state.pages.find(p => p.slug === pagePath && p.status === 'published') : null;
+    if (page) { showPage(page.id, { push: false, replace }); return; }
+    if (cat && state.categories.includes(cat)) { showCategory(cat, { push: false, replace }); return; }
+    showView('home', { push: false, replace });
+  }
+
+  window.addEventListener('popstate', () => applyRouteFromLocation(false));
+
+  function activateView(name) {
     document.querySelectorAll('.site-view').forEach(v => v.classList.remove('active'));
     document.getElementById('view-' + name).classList.add('active');
     currentView = name;
@@ -565,19 +597,25 @@
     if (name === 'home') renderHomeGrid();
   }
 
+  function showView(name, opts) {
+    activateView(name);
+    if (!opts || opts.push !== false) navigateUrl(location.pathname, opts && opts.replace);
+  }
+
   function renderHomeGrid() {
     const pub = state.pages.filter(p => p.status === 'published').sort((a,b) => b.updatedAt - a.updatedAt);
     const grid = document.getElementById('homeGrid');
     grid.innerHTML = pub.length ? pub.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">✍️</div><p>No published pages yet.</p></div>`;
   }
 
-  function showCategory(cat) {
+  function showCategory(cat, opts) {
     prevView = currentView; prevCat = currentCat;
     currentCat = cat;
     document.getElementById('catLabel').textContent = cat;
     const pages = state.pages.filter(p => p.category === cat && p.status === 'published').sort((a,b) => b.updatedAt - a.updatedAt);
     document.getElementById('catGrid').innerHTML = pages.length ? pages.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">📭</div><p>No pages in "${cat}" yet.</p></div>`;
-    showView('category');
+    activateView('category');
+    if (!opts || opts.push !== false) navigateUrl(location.pathname + '?category=' + encodeURIComponent(cat), opts && opts.replace);
   }
 
   function pageCardHtml(p) {
@@ -591,7 +629,7 @@
     </div>`;
   }
 
-  function showPage(id) {
+  function showPage(id, opts) {
     const page = state.pages.find(p => p.id === id);
     if (!page) return;
     prevView = currentView; prevCat = currentCat;
@@ -601,7 +639,8 @@
     document.getElementById('pageDate').textContent = d;
     document.getElementById('pageTitle').textContent = page.title;
     document.getElementById('pageContent').innerHTML = page.content;
-    showView('page');
+    activateView('page');
+    if (!opts || opts.push !== false) navigateUrl(location.pathname + '?page=' + encodeURIComponent(page.slug), opts && opts.replace);
   }
 
   function goBack() {
@@ -666,6 +705,7 @@
   function closeAdmin() {
     document.getElementById('admin').classList.remove('open');
     initSite();
+    showView('home');
   }
 
   function showAdminSection(name) {
@@ -708,7 +748,7 @@
     document.getElementById('editStatus').value = 'published';
     document.getElementById('editSlug').value = '';
     document.getElementById('editDelBtn').style.display = 'none';
-    updateImgPreview(); populateCatSelect('');
+    updateImgPreview(); populateCatSelect(''); updateSlugPreview();
     document.getElementById('a-pages').classList.remove('active');
     document.getElementById('a-edit').classList.add('active');
     document.getElementById('anav-pages').classList.add('active');
@@ -725,7 +765,7 @@
     document.getElementById('editStatus').value = page.status;
     document.getElementById('editSlug').value = page.slug;
     document.getElementById('editDelBtn').style.display = 'inline-flex';
-    updateImgPreview(); populateCatSelect(page.category);
+    updateImgPreview(); populateCatSelect(page.category); updateSlugPreview();
     document.getElementById('a-pages').classList.remove('active');
     document.getElementById('a-edit').classList.add('active');
     document.getElementById('anav-pages').classList.add('active');
@@ -789,7 +829,14 @@
 
   document.getElementById('editTitle').addEventListener('input', function() {
     if (!editingId) document.getElementById('editSlug').value = slugify(this.value);
+    updateSlugPreview();
   });
+  document.getElementById('editSlug').addEventListener('input', updateSlugPreview);
+
+  function updateSlugPreview() {
+    const v = document.getElementById('editSlug').value.trim();
+    document.getElementById('editSlugPreview').textContent = v || slugify(document.getElementById('editTitle').value) || 'this-value';
+  }
 
   // ── MEDIA ────────────────────────────────────────────────────────────────────
 
@@ -894,12 +941,13 @@
     const colorChanged = normalizeHex(state.themeColor || '#667eea') !== normalizeHex(SITE_CONTENT.themeColor || '#667eea');
     const titleChanged = state.siteTitle !== SITE_CONTENT.siteTitle;
     const taglineChanged = state.siteTagline !== SITE_CONTENT.siteTagline;
-    const hasChanges = !!(added.length || modified.length || deleted.length || titleChanged || taglineChanged || colorChanged);
-    return { added, modified, deleted, colorChanged, titleChanged, taglineChanged, hasChanges };
+    const urlChanged = (state.siteUrl || '') !== (SITE_CONTENT.siteUrl || '');
+    const hasChanges = !!(added.length || modified.length || deleted.length || titleChanged || taglineChanged || colorChanged || urlChanged);
+    return { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, hasChanges };
   }
 
   function renderPublish() {
-    const { added, modified, deleted, colorChanged, titleChanged, taglineChanged, hasChanges } = diffAgainstPublished();
+    const { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, hasChanges } = diffAgainstPublished();
 
     document.getElementById('pubCurrentVer').textContent = `v${SITE_CONTENT.version}`;
     document.getElementById('pubChangeSummary').textContent = hasChanges ? `${added.length} added, ${modified.length} modified, ${deleted.length} removed` : 'No changes since last publish';
@@ -910,6 +958,7 @@
     else {
       if (titleChanged) changesHtml += `<div class="change-item">⚙️ Site name changed to <b>${escHtml(state.siteTitle)}</b></div>`;
       if (taglineChanged) changesHtml += `<div class="change-item">⚙️ Tagline updated</div>`;
+      if (urlChanged) changesHtml += `<div class="change-item">🔗 Site URL changed to <b>${escHtml(state.siteUrl || '')}</b></div>`;
       if (colorChanged) changesHtml += `<div class="change-item">🎨 Primary color changed to <b>${escHtml(normalizeHex(state.themeColor || '#667eea'))}</b></div>`;
       added.forEach(p => { changesHtml += `<div class="change-item">✅ New page: <b>${escHtml(p.title)}</b> (${p.status})</div>`; });
       modified.forEach(p => { changesHtml += `<div class="change-item">✏️ Updated: <b>${escHtml(p.title)}</b></div>`; });
@@ -957,6 +1006,7 @@
       state = {...JSON.parse(JSON.stringify(server)), password: state.password, images: state.images, adminEmail: state.adminEmail || ''};
       saveState();
       initSite();
+      activateView('home');
       showAdminSection('publish');
       showToast(`✅ Synced to v${server.version}`);
     } catch(e) {
@@ -975,6 +1025,7 @@
       ],
       siteTitle: state.siteTitle,
       siteTagline: state.siteTagline,
+      siteUrl: state.siteUrl || window.location.origin,
       themeColor: normalizeHex(state.themeColor || '#667eea'),
       categories: state.categories,
       pages: state.pages.map(p => ({...p, featuredImage: p.featuredImage || null}))
@@ -990,19 +1041,23 @@
 
     const nextVer = SITE_CONTENT.version + 1;
     const json = getExportJson();
-    const filename = 'content.json';
+    const sitemap = generateSitemapXml();
     const subject = `${state.siteTitle} — content update (v${nextVer})`;
-    const message = `Content update for ${state.siteTitle}\n\nChange summary: ${summary}\n\nAttached: content.json (v${nextVer}), including any images. To publish, replace the content.json file on the server with this one — no code changes needed.`;
+    const message = `Content update for ${state.siteTitle}\n\nChange summary: ${summary}\n\nAttached: content.json (v${nextVer}) and sitemap.xml, including any images. To publish, replace both files on the server with these — no code changes needed.`;
 
-    const blob = new Blob([json], { type: 'application/json' });
+    const contentBlob = new Blob([json], { type: 'application/json' });
+    const sitemapBlob = new Blob([sitemap], { type: 'application/xml' });
 
     // Prefer the native share sheet so the export (with embedded images) goes
-    // out as a real file attachment — mailto: links can't carry that much data.
+    // out as real file attachments — mailto: links can't carry that much data.
     if (navigator.share && navigator.canShare) {
-      const file = new File([blob], filename, { type: 'application/json' });
-      if (navigator.canShare({ files: [file] })) {
+      const files = [
+        new File([contentBlob], 'content.json', { type: 'application/json' }),
+        new File([sitemapBlob], 'sitemap.xml', { type: 'application/xml' })
+      ];
+      if (navigator.canShare({ files })) {
         try {
-          await navigator.share({ files: [file], title: subject, text: message });
+          await navigator.share({ files, title: subject, text: message });
           showToast('✅ Shared — pick Mail to send it to your admin');
           return;
         } catch (err) {
@@ -1012,9 +1067,10 @@
       }
     }
 
-    downloadExportFile(blob, filename);
-    const mailBody = `Hi,\n\n${message}\n\nThe file "${filename}" has just been downloaded to your device — attach it to this email before sending.\n\nThank you!`;
-    showToast('📎 File downloaded — attach it to the email that opens');
+    downloadExportFile(contentBlob, 'content.json');
+    downloadExportFile(sitemapBlob, 'sitemap.xml');
+    const mailBody = `Hi,\n\n${message}\n\nThe files "content.json" and "sitemap.xml" have just been downloaded to your device — attach them to this email before sending.\n\nThank you!`;
+    showToast('📎 Files downloaded — attach them to the email that opens');
     setTimeout(() => {
       window.location.href = `mailto:${email ? encodeURIComponent(email) : ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
     }, 400);
@@ -1026,6 +1082,24 @@
     const blob = new Blob([json], { type: 'application/json' });
     downloadExportFile(blob, 'content.json');
     showToast(`⬇️ content.json (v${nextVer}) downloaded — upload it via FTP or your usual publish method`);
+  }
+
+  function generateSitemapXml() {
+    const base = (state.siteUrl || window.location.origin).replace(/\/+$/, '');
+    const path = location.pathname.replace(/\/[^/]*$/, '/');
+    const today = new Date().toISOString().slice(0, 10);
+    const urls = [{ loc: base + path, lastmod: today }];
+    state.pages.filter(p => p.status === 'published').forEach(p => {
+      urls.push({ loc: `${base}${path}?page=${encodeURIComponent(p.slug)}`, lastmod: new Date(p.updatedAt).toISOString().slice(0, 10) });
+    });
+    const body = urls.map(u => `  <url>\n    <loc>${escXml(u.loc)}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n  </url>`).join('\n');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
+  }
+
+  function downloadSitemap() {
+    const blob = new Blob([generateSitemapXml()], { type: 'application/xml' });
+    downloadExportFile(blob, 'sitemap.xml');
+    showToast('🗺️ sitemap.xml downloaded — upload it via FTP or your usual publish method');
   }
 
   function downloadExportFile(blob, filename) {
@@ -1048,6 +1122,7 @@
   function loadSettings() {
     document.getElementById('setSiteName').value = state.siteTitle;
     document.getElementById('setTagline').value = state.siteTagline;
+    document.getElementById('setSiteUrl').value = state.siteUrl || window.location.origin;
     document.getElementById('setNewPw').value = '';
     const color = normalizeHex(state.themeColor || '#667eea');
     document.getElementById('setColorHex').value = color;
@@ -1059,6 +1134,8 @@
   function saveSettings() {
     state.siteTitle = document.getElementById('setSiteName').value.trim() || state.siteTitle;
     state.siteTagline = document.getElementById('setTagline').value.trim();
+    const urlInput = document.getElementById('setSiteUrl').value.trim().replace(/\/+$/, '');
+    state.siteUrl = urlInput || window.location.origin;
     const colorInput = document.getElementById('setColorHex').value.trim();
     if (isValidHex(colorInput)) {
       state.themeColor = normalizeHex(colorInput);
@@ -1092,6 +1169,7 @@
 
   function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function escXml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
   function stripHtml(h) { const t=document.createElement('div'); t.innerHTML=h; return t.textContent||t.innerText||''; }
   function formatDate(ts) { return new Date(ts).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'}); }
   function showToast(msg) {
@@ -1199,6 +1277,7 @@
     SITE_CONTENT = await loadSiteContent();
     state = loadState();
     initSite();
+    applyRouteFromLocation(true);
   }
   boot();
 
