@@ -35,6 +35,21 @@
     .ver-btn.unpublished::after { content: '\2022 unpublished'; margin-left: 6px; }
     .ver-date-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
     @media (max-width: 480px) { .ver-date-label { display: none; } }
+
+    /* SEARCH */
+    .nav-search-wrap { position: relative; }
+    .nav-search-btn { background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px 6px; opacity: .6; transition: opacity .15s; line-height: 1; }
+    .nav-search-btn:hover { opacity: 1; }
+    .search-panel { position: absolute; top: calc(100% + 10px); right: 0; width: min(360px, 90vw); background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 12px; display: none; z-index: 500; }
+    .search-panel.open { display: block; }
+    .search-input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--bg); color: var(--text); font-size: 14px; outline: none; }
+    .search-input:focus { border-color: var(--accent); }
+    .search-results { margin-top: 10px; max-height: 360px; overflow-y: auto; }
+    .search-result { padding: 10px; border-radius: 8px; cursor: pointer; }
+    .search-result:hover { background: var(--bg); }
+    .search-result-title { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .search-result-snippet { font-size: 12px; color: var(--text-soft); }
+    .search-empty { font-size: 12px; color: var(--text-muted); padding: 8px 2px; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
     .nav-lock { font-size: 18px; cursor: pointer; opacity: .3; transition: opacity .15s; background: none; border: none; padding: 4px; }
     .nav-lock:hover { opacity: .7; }
@@ -131,6 +146,12 @@
     .a-btn-danger { background: #c53030; color: #fff; } .a-btn-danger:hover { background: #9b2c2c; }
     .a-btn-sm { padding: 6px 12px; font-size: 12px; }
     .a-page-item { background: #161b27; border: 1px solid #2a3344; border-radius: 10px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 14px; }
+    .a-page-item.drag-over, .cat-item.drag-over { border-color: #667eea; background: #1e2535; }
+    .drag-handle { cursor: grab; color: #4a5568; font-size: 16px; flex-shrink: 0; user-select: none; }
+    .drag-handle:active { cursor: grabbing; }
+    .reorder-btns { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+    .reorder-btns .a-btn-sm { padding: 1px 8px; line-height: 1.4; }
+    .reorder-btns .a-btn-sm:disabled { opacity: .25; cursor: default; }
     .a-page-info { flex: 1; min-width: 0; }
     .a-page-title { font-size: 14px; font-weight: 700; color: #f0f4f8; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .a-page-meta { font-size: 12px; color: #718096; }
@@ -194,6 +215,13 @@
     <span class="nav-brand" id="navBrand" onclick="showView('home')">LocalCMS</span>
     <div class="nav-links" id="navLinks"></div>
     <div class="nav-right">
+      <div class="nav-search-wrap">
+        <button class="nav-search-btn" onclick="toggleSearch()" title="Search" aria-label="Search">🔍</button>
+        <div class="search-panel" id="searchPanel">
+          <input type="text" class="search-input" id="searchInput" placeholder="Search…" oninput="runSearch(this.value)" onkeydown="if(event.key==='Escape')closeSearch()">
+          <div class="search-results" id="searchResults"></div>
+        </div>
+      </div>
       <button class="ver-btn" id="verBtn" onclick="showVersionHistory()">v1</button>
       <span class="ver-date-label" id="verDateLabel"></span>
       <button class="nav-lock" onclick="openLock()">🔒</button>
@@ -603,7 +631,7 @@
   }
 
   function renderHomeGrid() {
-    const pub = state.pages.filter(p => p.status === 'published').sort((a,b) => b.updatedAt - a.updatedAt);
+    const pub = state.pages.filter(p => p.status === 'published');
     const grid = document.getElementById('homeGrid');
     grid.innerHTML = pub.length ? pub.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">✍️</div><p>No published pages yet.</p></div>`;
   }
@@ -612,7 +640,7 @@
     prevView = currentView; prevCat = currentCat;
     currentCat = cat;
     document.getElementById('catLabel').textContent = cat;
-    const pages = state.pages.filter(p => p.category === cat && p.status === 'published').sort((a,b) => b.updatedAt - a.updatedAt);
+    const pages = state.pages.filter(p => p.category === cat && p.status === 'published');
     document.getElementById('catGrid').innerHTML = pages.length ? pages.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">📭</div><p>No pages in "${cat}" yet.</p></div>`;
     activateView('category');
     if (!opts || opts.push !== false) navigateUrl(location.pathname + '?category=' + encodeURIComponent(cat), opts && opts.replace);
@@ -647,6 +675,61 @@
     if (prevView === 'category' && prevCat) showCategory(prevCat);
     else showView('home');
   }
+
+  // ── SEARCH ───────────────────────────────────────────────────────────────────
+
+  function toggleSearch() {
+    const panel = document.getElementById('searchPanel');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+      const input = document.getElementById('searchInput');
+      input.value = '';
+      document.getElementById('searchResults').innerHTML = '';
+      setTimeout(() => input.focus(), 50);
+    }
+  }
+
+  function closeSearch() {
+    document.getElementById('searchPanel').classList.remove('open');
+  }
+
+  function runSearch(query) {
+    const q = query.trim().toLowerCase();
+    const results = document.getElementById('searchResults');
+    if (!q) { results.innerHTML = ''; return; }
+    const matches = state.pages
+      .filter(p => p.status === 'published')
+      .map(p => {
+        const title = p.title.toLowerCase();
+        const text = stripHtml(p.content);
+        const textLower = text.toLowerCase();
+        const titleHit = title.includes(q);
+        const idx = textLower.indexOf(q);
+        if (!titleHit && idx === -1) return null;
+        let snippet;
+        if (idx !== -1) {
+          const start = Math.max(0, idx - 40);
+          snippet = (start > 0 ? '…' : '') + text.slice(start, idx + q.length + 60) + (idx + q.length + 60 < text.length ? '…' : '');
+        } else {
+          snippet = text.slice(0, 100) + (text.length > 100 ? '…' : '');
+        }
+        return { page: p, titleHit, snippet };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (b.titleHit - a.titleHit) || (b.page.updatedAt - a.page.updatedAt))
+      .slice(0, 8);
+    results.innerHTML = matches.length
+      ? matches.map(m => `<div class="search-result" onclick="closeSearch(); showPage('${m.page.id}')">
+          <div class="search-result-title">${escHtml(m.page.title)}</div>
+          <div class="search-result-snippet">${escHtml(m.snippet)}</div>
+        </div>`).join('')
+      : `<div class="search-empty">No matches for "${escHtml(query)}"</div>`;
+  }
+
+  document.addEventListener('click', e => {
+    const wrap = document.querySelector('.nav-search-wrap');
+    if (wrap && !wrap.contains(e.target)) closeSearch();
+  });
 
   // ── VERSION HISTORY ──────────────────────────────────────────────────────────
 
@@ -726,17 +809,43 @@
   function renderAdminPages() {
     const list = document.getElementById('adminPagesList');
     if (!state.pages.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">📄</div><p>No pages yet.</p></div>`; return; }
-    list.innerHTML = [...state.pages].sort((a,b) => b.updatedAt - a.updatedAt).map(p => {
+    list.innerHTML = state.pages.map((p, i) => {
       const d = new Date(p.updatedAt).toLocaleDateString(undefined, {month:'short',day:'numeric',year:'numeric'});
-      return `<div class="a-page-item">
+      return `<div class="a-page-item" draggable="true"
+        ondragstart="pageDragStart(event, ${i})"
+        ondragover="event.preventDefault(); this.classList.add('drag-over')"
+        ondragleave="this.classList.remove('drag-over')"
+        ondrop="this.classList.remove('drag-over'); pageDrop(event, ${i})">
+        <span class="drag-handle" title="Drag to reorder">⠿</span>
         <div class="a-page-info">
           <div class="a-page-title">${escHtml(p.title)}</div>
           <div class="a-page-meta">${p.category ? escHtml(p.category)+' · ' : ''}${d}</div>
         </div>
         <span class="a-status-badge ${p.status==='published'?'pub':'draft'}">${p.status}</span>
+        <div class="reorder-btns">
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="movePage(${i}, -1)" ${i===0?'disabled':''} title="Move up">▲</button>
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="movePage(${i}, 1)" ${i===state.pages.length-1?'disabled':''} title="Move down">▼</button>
+        </div>
         <button class="a-btn a-btn-ghost a-btn-sm" onclick="editPage('${p.id}')">Edit</button>
       </div>`;
     }).join('');
+  }
+
+  let dragPageIndex = null;
+  function pageDragStart(e, i) { dragPageIndex = i; e.dataTransfer.effectAllowed = 'move'; }
+  function pageDrop(e, i) {
+    e.preventDefault();
+    if (dragPageIndex === null || dragPageIndex === i) return;
+    const [moved] = state.pages.splice(dragPageIndex, 1);
+    state.pages.splice(i, 0, moved);
+    dragPageIndex = null;
+    saveState(); renderAdminPages();
+  }
+  function movePage(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= state.pages.length) return;
+    [state.pages[i], state.pages[j]] = [state.pages[j], state.pages[i]];
+    saveState(); renderAdminPages();
   }
 
   function newPage() {
@@ -903,14 +1012,40 @@
   function renderAdminCategories() {
     const list = document.getElementById('adminCatList');
     if (!state.categories.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">🏷️</div><p>No categories yet.</p></div>`; return; }
-    list.innerHTML = state.categories.map(cat => {
+    list.innerHTML = state.categories.map((cat, i) => {
       const count = state.pages.filter(p => p.category === cat).length;
-      return `<div class="cat-item">
+      return `<div class="cat-item" draggable="true"
+        ondragstart="catDragStart(event, ${i})"
+        ondragover="event.preventDefault(); this.classList.add('drag-over')"
+        ondragleave="this.classList.remove('drag-over')"
+        ondrop="this.classList.remove('drag-over'); catDrop(event, ${i})">
+        <span class="drag-handle" title="Drag to reorder">⠿</span>
         <span class="cat-name">${escHtml(cat)}</span>
         <span class="cat-count">${count} page${count!==1?'s':''}</span>
+        <div class="reorder-btns">
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="moveCategory(${i}, -1)" ${i===0?'disabled':''} title="Move up">▲</button>
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="moveCategory(${i}, 1)" ${i===state.categories.length-1?'disabled':''} title="Move down">▼</button>
+        </div>
         ${count===0 ? `<button class="a-btn a-btn-danger a-btn-sm" onclick="deleteCategory('${escHtml(cat)}')">Delete</button>` : ''}
       </div>`;
     }).join('');
+  }
+
+  let dragCatIndex = null;
+  function catDragStart(e, i) { dragCatIndex = i; e.dataTransfer.effectAllowed = 'move'; }
+  function catDrop(e, i) {
+    e.preventDefault();
+    if (dragCatIndex === null || dragCatIndex === i) return;
+    const [moved] = state.categories.splice(dragCatIndex, 1);
+    state.categories.splice(i, 0, moved);
+    dragCatIndex = null;
+    saveState(); renderAdminCategories(); renderNavLinks();
+  }
+  function moveCategory(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= state.categories.length) return;
+    [state.categories[i], state.categories[j]] = [state.categories[j], state.categories[i]];
+    saveState(); renderAdminCategories(); renderNavLinks();
   }
 
   function addCategory() {
