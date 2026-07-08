@@ -1,22 +1,28 @@
 {
-  "version": 1,
-  "publishedAt": 1751000000000,
+  "version": 2,
+  "publishedAt": 1783476881775,
   "adminEmail": "",
   "changelog": [
     {
       "v": 1,
       "date": 1751000000000,
       "summary": "Initial launch — welcome content, getting started guides, and sample blog posts"
+    },
+    {
+      "v": 2,
+      "date": 1783476881775,
+      "summary": "Site rebrand: renamed to cameronians.scot with new tagline, green theme color, and an added category"
     }
   ],
-  "siteTitle": "LocalCMS",
-  "siteTagline": "A beautifully simple serverless CMS",
-  "themeColor": "#667eea",
+  "siteTitle": "cameronians.scot",
+  "siteTagline": "The Cameronians",
+  "themeColor": "#22c55e",
   "categories": [
     "General",
     "Blog",
     "Guides",
-    "Updates"
+    "Updates",
+    "Other"
   ],
   "pages": [
     {

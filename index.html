@@ -31,6 +31,8 @@
     .ver-btn { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 20px; background: var(--bg); border: 1.5px solid var(--border); color: var(--text-soft); cursor: pointer; transition: all .15s; }
     .ver-btn:hover { border-color: var(--accent); color: var(--accent); }
     .ver-btn.has-update { border-color: #38a169; color: #38a169; animation: pulse 2s infinite; }
+    .ver-btn.unpublished { border-color: #d69e2e; color: #d69e2e; }
+    .ver-btn.unpublished::after { content: '\2022 unpublished'; margin-left: 6px; }
     .ver-date-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
     @media (max-width: 480px) { .ver-date-label { display: none; } }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
@@ -518,6 +520,15 @@
     } catch(e) {
       showToast('⚠️ Storage full — delete some images');
     }
+    updateVerBtnIndicator();
+  }
+
+  function updateVerBtnIndicator() {
+    const btn = document.getElementById('verBtn');
+    if (!btn || !SITE_CONTENT) return;
+    const unpublished = diffAgainstPublished().hasChanges;
+    btn.classList.toggle('unpublished', unpublished);
+    btn.title = unpublished ? 'You have local edits not yet published — see Submit for Publish' : '';
   }
 
   // ── PUBLIC SITE ──────────────────────────────────────────────────────────────
@@ -529,6 +540,7 @@
     document.getElementById('navBrand').textContent = state.siteTitle;
     document.getElementById('verBtn').textContent = 'v' + SITE_CONTENT.version;
     document.getElementById('verDateLabel').textContent = 'Updated ' + formatDate(SITE_CONTENT.publishedAt);
+    updateVerBtnIndicator();
     applyThemeColor(state.themeColor);
     renderNavLinks();
     showView('home');
@@ -870,7 +882,7 @@
 
   // ── PUBLISH / SUBMIT ─────────────────────────────────────────────────────────
 
-  function renderPublish() {
+  function diffAgainstPublished() {
     const embedded = SITE_CONTENT.pages;
     const local = state.pages;
     const added = local.filter(p => !embedded.find(e => e.id === p.id));
@@ -880,17 +892,24 @@
     });
     const deleted = embedded.filter(e => !local.find(p => p.id === e.id));
     const colorChanged = normalizeHex(state.themeColor || '#667eea') !== normalizeHex(SITE_CONTENT.themeColor || '#667eea');
-    const hasChanges = added.length || modified.length || deleted.length || state.siteTitle !== SITE_CONTENT.siteTitle || state.siteTagline !== SITE_CONTENT.siteTagline || colorChanged;
+    const titleChanged = state.siteTitle !== SITE_CONTENT.siteTitle;
+    const taglineChanged = state.siteTagline !== SITE_CONTENT.siteTagline;
+    const hasChanges = !!(added.length || modified.length || deleted.length || titleChanged || taglineChanged || colorChanged);
+    return { added, modified, deleted, colorChanged, titleChanged, taglineChanged, hasChanges };
+  }
+
+  function renderPublish() {
+    const { added, modified, deleted, colorChanged, titleChanged, taglineChanged, hasChanges } = diffAgainstPublished();
 
     document.getElementById('pubCurrentVer').textContent = `v${SITE_CONTENT.version}`;
     document.getElementById('pubChangeSummary').textContent = hasChanges ? `${added.length} added, ${modified.length} modified, ${deleted.length} removed` : 'No changes since last publish';
-    document.getElementById('pubPageCount').textContent = `${local.filter(p=>p.status==='published').length} published, ${local.filter(p=>p.status==='draft').length} draft`;
+    document.getElementById('pubPageCount').textContent = `${state.pages.filter(p=>p.status==='published').length} published, ${state.pages.filter(p=>p.status==='draft').length} draft`;
 
     let changesHtml = '';
     if (!hasChanges) { changesHtml = `<div style="color:#718096;font-size:13px;margin-bottom:12px">Your local content matches the published version.</div>`; }
     else {
-      if (state.siteTitle !== SITE_CONTENT.siteTitle) changesHtml += `<div class="change-item">⚙️ Site name changed to <b>${escHtml(state.siteTitle)}</b></div>`;
-      if (state.siteTagline !== SITE_CONTENT.siteTagline) changesHtml += `<div class="change-item">⚙️ Tagline updated</div>`;
+      if (titleChanged) changesHtml += `<div class="change-item">⚙️ Site name changed to <b>${escHtml(state.siteTitle)}</b></div>`;
+      if (taglineChanged) changesHtml += `<div class="change-item">⚙️ Tagline updated</div>`;
       if (colorChanged) changesHtml += `<div class="change-item">🎨 Primary color changed to <b>${escHtml(normalizeHex(state.themeColor || '#667eea'))}</b></div>`;
       added.forEach(p => { changesHtml += `<div class="change-item">✅ New page: <b>${escHtml(p.title)}</b> (${p.status})</div>`; });
       modified.forEach(p => { changesHtml += `<div class="change-item">✏️ Updated: <b>${escHtml(p.title)}</b></div>`; });
