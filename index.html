@@ -187,6 +187,9 @@
     .media-thumb { background: #161b27; border: 2px solid #2a3344; border-radius: 8px; aspect-ratio: 1; overflow: hidden; cursor: pointer; transition: border-color .15s; position: relative; }
     .media-thumb:hover { border-color: #667eea; }
     .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .media-thumb-pdf { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 4px; color: #a0aec0; background: #1e2535; }
+    .media-thumb-pdf .pdf-icon { font-size: 26px; }
+    .media-thumb-pdf .pdf-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
     .media-thumb-del { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; cursor: pointer; display: none; align-items: center; justify-content: center; }
     .media-thumb:hover .media-thumb-del { display: flex; }
     .media-thumb-name { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.7); color: #fff; font-size: 10px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -362,6 +365,7 @@
                 <button class="e-btn" onmousedown="event.preventDefault()" onclick="execBlock('blockquote')">❝</button>
                 <button class="e-btn" onmousedown="event.preventDefault()" onclick="insertLink()">🔗</button>
                 <button class="e-btn" onmousedown="event.preventDefault()" onclick="insertImageFromMedia()">🖼️</button>
+                <button class="e-btn" onmousedown="event.preventDefault()" onclick="insertDocumentFromMedia()">📎</button>
               </div>
               <div class="editor-body" id="editor" contenteditable="true"></div>
             </div>
@@ -416,12 +420,12 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <label class="a-btn a-btn-primary" style="cursor:pointer">
               ↑ Upload
-              <input type="file" accept="image/*" multiple style="display:none" onchange="uploadImages(this)">
+              <input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="uploadImages(this)">
             </label>
             <button class="a-btn a-btn-ghost" onclick="addImageByUrl()">🔗 Add by URL</button>
           </div>
         </div>
-        <div style="font-size:12px;color:#718096;margin-bottom:12px">Uploaded images are stored in your browser — keep them under a few MB each to avoid filling localStorage. Images added by URL (🔗) stay linked to wherever they're hosted instead, so there's no size limit on those.</div>
+        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
         <div class="media-grid" id="adminMediaGrid"></div>
       </div>
 
@@ -1007,8 +1011,9 @@
     if (url) { document.getElementById('editor').focus(); document.execCommand('createLink', false, url); }
   }
 
-  function insertImageFromMedia() { openMediaPicker(url => { document.getElementById('editor').focus(); document.execCommand('insertImage', false, url); }); }
-  function pickFeaturedImage() { openMediaPicker(url => { editingFeaturedImage = url; updateImgPreview(); }); }
+  function insertImageFromMedia() { openMediaPicker(img => { document.getElementById('editor').focus(); document.execCommand('insertImage', false, img.data); }, 'image'); }
+  function insertDocumentFromMedia() { openMediaPicker(img => { document.getElementById('editor').focus(); document.execCommand('insertHTML', false, `<a href="${img.data}" target="_blank" rel="noopener">📎 ${escHtml(img.name)}</a>`); }, 'pdf'); }
+  function pickFeaturedImage() { openMediaPicker(img => { editingFeaturedImage = img.data; updateImgPreview(); }, 'image'); }
   function removeFeaturedImage() { editingFeaturedImage = null; updateImgPreview(); }
 
   document.getElementById('editTitle').addEventListener('input', function() {
@@ -1028,10 +1033,11 @@
     const files = Array.from(input.files);
     let done = 0;
     files.forEach(file => {
+      const kind = file.type === 'application/pdf' ? 'pdf' : 'image';
       const reader = new FileReader();
       reader.onload = e => {
-        state.images.push({id: 'img'+Date.now()+Math.random().toString(36).slice(2), name: file.name, data: e.target.result});
-        if (++done === files.length) { saveState(); renderAdminMedia(); showToast(`✅ ${files.length} image${files.length>1?'s':''} uploaded`); }
+        state.images.push({id: 'img'+Date.now()+Math.random().toString(36).slice(2), name: file.name, data: e.target.result, kind});
+        if (++done === files.length) { saveState(); renderAdminMedia(); showToast(`✅ ${files.length} file${files.length>1?'s':''} uploaded`); }
       };
       reader.readAsDataURL(file);
     });
@@ -1039,13 +1045,20 @@
   }
 
   function addImageByUrl() {
-    const url = (prompt('Image URL:') || '').trim();
+    const url = (prompt('Image or PDF URL:') || '').trim();
     if (!url) return;
     if (!/^https?:\/\//i.test(url)) { showToast('⚠️ Enter a full URL starting with http:// or https://'); return; }
-    const name = decodeURIComponent(url.split('/').pop().split('?')[0]) || 'image';
-    state.images.push({ id: 'img'+Date.now()+Math.random().toString(36).slice(2), name, data: url, external: true });
+    const name = decodeURIComponent(url.split('/').pop().split('?')[0]) || 'file';
+    const kind = /\.pdf$/i.test(url) ? 'pdf' : 'image';
+    state.images.push({ id: 'img'+Date.now()+Math.random().toString(36).slice(2), name, data: url, external: true, kind });
     saveState(); renderAdminMedia();
-    showToast('✅ Image linked');
+    showToast(kind === 'pdf' ? '✅ Document linked' : '✅ Image linked');
+  }
+
+  function mediaThumbInnerHtml(img) {
+    return img.kind === 'pdf'
+      ? `<div class="media-thumb-pdf"><span class="pdf-icon">📄</span><span class="pdf-label">PDF</span></div>`
+      : `<img src="${img.data}" alt="${escHtml(img.name)}" loading="lazy">`;
   }
 
   function renderAdminMedia() {
@@ -1053,7 +1066,7 @@
     if (!state.images.length) { grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🖼️</div><p>No images yet.</p></div>`; return; }
     grid.innerHTML = state.images.map(img => `
       <div class="media-thumb">
-        <img src="${img.data}" alt="${escHtml(img.name)}" loading="lazy">
+        ${mediaThumbInnerHtml(img)}
         ${img.external ? `<span class="media-ext-badge" title="Linked by URL, not stored in your browser">🔗</span>` : ''}
         <div class="media-thumb-name">${escHtml(img.name)}</div>
         <button class="media-thumb-del" onclick="deleteImage('${img.id}',event)">✕</button>
@@ -1153,8 +1166,8 @@
     }));
 
     const images = attachmentItems
-      .filter(it => it.url && /\.(jpe?g|png|gif|webp|svg)$/i.test(it.url))
-      .map(it => ({ wpId: it.id, name: it.title || it.url.split('/').pop(), url: it.url }));
+      .filter(it => it.url && /\.(jpe?g|png|gif|webp|svg|pdf)$/i.test(it.url))
+      .map(it => ({ wpId: it.id, name: it.title || it.url.split('/').pop(), url: it.url, mediaKind: /\.pdf$/i.test(it.url) ? 'pdf' : 'image' }));
 
     return { pages, images, skipped };
   }
@@ -1165,11 +1178,13 @@
     const draftCount = parsed.pages.length - pubCount;
     const alreadyImported = new Set(state.pages.filter(p => p.importedFrom).map(p => p.importedFrom));
     const newCount = parsed.pages.filter(p => !alreadyImported.has('wp-' + p.wpId)).length;
+    const imgCount = parsed.images.filter(i => i.mediaKind !== 'pdf').length;
+    const pdfCount = parsed.images.filter(i => i.mediaKind === 'pdf').length;
     el.innerHTML = `
       <div class="publish-info">
         <div class="publish-row"><span class="publish-label">Pages &amp; posts found</span><span class="publish-val">${parsed.pages.length} (${pubCount} published, ${draftCount} draft)</span></div>
         <div class="publish-row"><span class="publish-label">New to import</span><span class="publish-val">${newCount}${newCount !== parsed.pages.length ? ` (${parsed.pages.length - newCount} already imported previously — will be skipped)` : ''}</span></div>
-        <div class="publish-row"><span class="publish-label">Media references</span><span class="publish-val">${parsed.images.length} (linked by URL, not downloaded)</span></div>
+        <div class="publish-row"><span class="publish-label">Media references</span><span class="publish-val">${imgCount} images, ${pdfCount} PDFs (linked by URL, not downloaded)</span></div>
         <div class="publish-row"><span class="publish-label">Skipped items</span><span class="publish-val">${parsed.skipped} (nav menus, templates, styles — not content)</span></div>
       </div>
       <div style="font-size:12px;color:#718096;margin-bottom:16px">Nested WordPress pages are flattened — ancestry is kept as a "Parent › Child" title prefix. All imported items land as local drafts/pages here — nothing publishes automatically.</div>
@@ -1210,7 +1225,7 @@
     pendingWxrImport.images.forEach(img => {
       const marker = 'wp-' + img.wpId;
       if (alreadyImages.has(marker)) return;
-      state.images.push({ id: 'img-' + marker, name: img.name, data: img.url, external: true, importedFrom: marker });
+      state.images.push({ id: 'img-' + marker, name: img.name, data: img.url, external: true, kind: img.mediaKind, importedFrom: marker });
       imagesImported++;
     });
     saveState();
@@ -1227,8 +1242,9 @@
     el.innerHTML = '';
   }
 
-  function openMediaPicker(cb) {
-    if (!state.images.length) { showToast('Upload images in Media first'); return; }
+  function openMediaPicker(cb, kindFilter) {
+    const items = kindFilter ? state.images.filter(i => (i.kind || 'image') === kindFilter) : state.images;
+    if (!items.length) { showToast(kindFilter === 'pdf' ? 'Add a document in Media first' : 'Upload images in Media first'); return; }
     mediaPickerCb = cb;
     const el = document.createElement('div');
     el.id = 'mediaPicker';
@@ -1236,10 +1252,10 @@
     el.innerHTML = `
       <div style="background:#161b27;border-radius:16px;padding:24px;width:min(580px,94vw);max-height:80vh;overflow-y:auto">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <div style="font-size:16px;font-weight:800;color:#f0f4f8">Pick an image</div>
+          <div style="font-size:16px;font-weight:800;color:#f0f4f8">${kindFilter === 'pdf' ? 'Pick a document' : 'Pick an image'}</div>
           <button onclick="document.getElementById('mediaPicker').remove()" style="background:none;border:none;color:#a0aec0;font-size:22px;cursor:pointer">×</button>
         </div>
-        <div class="media-grid">${state.images.map(img => `<div class="media-thumb" onclick="mediaPickerSelect('${img.id}')"><img src="${img.data}" alt="${escHtml(img.name)}" loading="lazy"><div class="media-thumb-name">${escHtml(img.name)}</div></div>`).join('')}</div>
+        <div class="media-grid">${items.map(img => `<div class="media-thumb" onclick="mediaPickerSelect('${img.id}')">${mediaThumbInnerHtml(img)}<div class="media-thumb-name">${escHtml(img.name)}</div></div>`).join('')}</div>
       </div>`;
     document.body.appendChild(el);
   }
@@ -1247,7 +1263,7 @@
   function mediaPickerSelect(id) {
     const img = state.images.find(i => i.id === id);
     if (!img || !mediaPickerCb) return;
-    mediaPickerCb(img.data);
+    mediaPickerCb(img);
     mediaPickerCb = null;
     const picker = document.getElementById('mediaPicker');
     if (picker) picker.remove();
