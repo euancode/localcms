@@ -1134,17 +1134,21 @@
     const attachmentItems = raw.filter(it => it.type === 'attachment');
     const skipped = raw.length - contentItems.length - attachmentItems.length;
 
-    function breadcrumbTitle(it) {
+    // WordPress pages here don't really use categories (only "Uncategorized"
+    // exists) — the real organizing structure is page hierarchy. So: the
+    // outermost ancestor (site root) is dropped, the next level up becomes
+    // the page's category (auto-created if new), and any remaining nesting
+    // stays as a "Parent › Child" title prefix.
+    function breadcrumbTitleAndCategory(it) {
       const chain = [it.title];
       let cur = it, guard = 0;
       while (cur.parent && cur.parent !== '0' && byId[cur.parent] && guard++ < 10) {
         cur = byId[cur.parent];
         chain.unshift(cur.title);
       }
-      // Drop the outermost ancestor (effectively the site root) — keeps the
-      // breadcrumb shorter while still showing real nesting below it.
       if (chain.length > 1) chain.shift();
-      return chain.join(' › ');
+      if (chain.length > 1) return { title: chain.slice(1).join(' › '), category: chain[0] };
+      return { title: chain[0], category: '' };
     }
 
     function toEmbedUrl(url) {
@@ -1168,15 +1172,19 @@
       return out.trim();
     }
 
-    const pages = contentItems.map(it => ({
-      wpId: it.id,
-      title: breadcrumbTitle(it),
-      slug: it.name || slugify(it.title),
-      content: cleanContent(it.content),
-      status: it.status === 'publish' ? 'published' : 'draft',
-      kind: it.type,
-      link: it.link,
-    }));
+    const pages = contentItems.map(it => {
+      const bc = breadcrumbTitleAndCategory(it);
+      return {
+        wpId: it.id,
+        title: bc.title,
+        category: bc.category,
+        slug: it.name || slugify(it.title),
+        content: cleanContent(it.content),
+        status: it.status === 'publish' ? 'published' : 'draft',
+        kind: it.type,
+        link: it.link,
+      };
+    });
 
     const images = attachmentItems
       .filter(it => it.url && /\.(jpe?g|png|gif|webp|svg|pdf)$/i.test(it.url))
@@ -1190,17 +1198,20 @@
     const pubCount = parsed.pages.filter(p => p.status === 'published').length;
     const draftCount = parsed.pages.length - pubCount;
     const alreadyImported = new Set(state.pages.filter(p => p.importedFrom).map(p => p.importedFrom));
-    const newCount = parsed.pages.filter(p => !alreadyImported.has('wp-' + p.wpId)).length;
+    const newPages = parsed.pages.filter(p => !alreadyImported.has('wp-' + p.wpId));
+    const newCount = newPages.length;
     const imgCount = parsed.images.filter(i => i.mediaKind !== 'pdf').length;
     const pdfCount = parsed.images.filter(i => i.mediaKind === 'pdf').length;
+    const newCategories = [...new Set(newPages.map(p => p.category).filter(Boolean))].filter(c => !state.categories.includes(c));
     el.innerHTML = `
       <div class="publish-info">
         <div class="publish-row"><span class="publish-label">Pages &amp; posts found</span><span class="publish-val">${parsed.pages.length} (${pubCount} published, ${draftCount} draft)</span></div>
         <div class="publish-row"><span class="publish-label">New to import</span><span class="publish-val">${newCount}${newCount !== parsed.pages.length ? ` (${parsed.pages.length - newCount} already imported previously — will be skipped)` : ''}</span></div>
+        <div class="publish-row"><span class="publish-label">New categories</span><span class="publish-val">${newCategories.length ? `${newCategories.length}: ${newCategories.map(escHtml).join(', ')}` : 'None — pages will be uncategorised'}</span></div>
         <div class="publish-row"><span class="publish-label">Media references</span><span class="publish-val">${imgCount} images, ${pdfCount} PDFs (linked by URL, not downloaded)</span></div>
         <div class="publish-row"><span class="publish-label">Skipped items</span><span class="publish-val">${parsed.skipped} (nav menus, templates, styles — not content)</span></div>
       </div>
-      <div style="font-size:12px;color:#718096;margin-bottom:16px">Nested WordPress pages are flattened — ancestry is kept as a "Parent › Child" title prefix. Links between imported pages are rewritten to stay on this site; links to anything not being imported still point at the old WordPress URLs. All imported items land as local drafts/pages here — nothing publishes automatically.</div>
+      <div style="font-size:12px;color:#718096;margin-bottom:16px">Nested WordPress pages are flattened: the top-level parent becomes the page's category (auto-created), and any deeper nesting stays as a "Parent › Child" title prefix. Links between imported pages are rewritten to stay on this site; links to anything not being imported still point at the old WordPress URLs. All imported items land as local drafts/pages here — nothing publishes automatically.</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="a-btn a-btn-primary" onclick="confirmWxrImport()">Import ${newCount} item${newCount === 1 ? '' : 's'}</button>
         <button class="a-btn a-btn-ghost" onclick="cancelWxrImport()">Cancel</button>
@@ -1269,7 +1280,17 @@
       if (p.link) linkMap[normalizeWpUrl(p.link)] = uniqueSlug;
       idMap[p.wpId] = uniqueSlug;
       slugMap[baseSlug] = uniqueSlug;
-      toInsert.push({ wpId: p.wpId, marker, slug: uniqueSlug, title: p.title, content: p.content, status: p.status, i });
+      toInsert.push({ wpId: p.wpId, marker, slug: uniqueSlug, title: p.title, category: p.category, content: p.content, status: p.status, i });
+    });
+
+    // New categories (from page hierarchy — see breadcrumbTitleAndCategory)
+    // get created up front so every imported page can reference one.
+    let categoriesCreated = 0;
+    toInsert.forEach(t => {
+      if (t.category && !state.categories.includes(t.category)) {
+        state.categories.push(t.category);
+        categoriesCreated++;
+      }
     });
 
     // Pass 2: insert with internal links resolved now that every imported
@@ -1279,7 +1300,7 @@
         id: 'wpimport-' + t.wpId + '-' + (now + t.i),
         title: t.title,
         slug: t.slug,
-        category: '',
+        category: t.category,
         content: rewriteInternalLinks(t.content, linkMap, idMap, slugMap, pendingWxrImport.siteHost),
         featuredImage: null,
         status: t.status,
@@ -1301,7 +1322,7 @@
     });
     saveState();
     renderAdminPages();
-    showToast(`✅ Imported ${imported} page${imported === 1 ? '' : 's'}${skipped ? `, skipped ${skipped} already imported` : ''}${imagesImported ? ` · ${imagesImported} media links added` : ''}`);
+    showToast(`✅ Imported ${imported} page${imported === 1 ? '' : 's'}${skipped ? `, skipped ${skipped} already imported` : ''}${categoriesCreated ? ` · ${categoriesCreated} new categor${categoriesCreated === 1 ? 'y' : 'ies'}` : ''}${imagesImported ? ` · ${imagesImported} media links added` : ''}`);
     cancelWxrImport();
     showAdminSection('pages');
   }
