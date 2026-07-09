@@ -161,6 +161,7 @@
     #admin.open { display: flex; }
     .admin-topbar { height: 54px; background: #161b27; border-bottom: 1px solid #2a3344; display: flex; align-items: center; padding: 0 20px; gap: 14px; flex-shrink: 0; }
     .admin-brand { font-size: 15px; font-weight: 900; color: #667eea; }
+    .admin-app-ver { font-size: 11px; color: #4a5568; font-family: 'Courier New', monospace; }
     .admin-badge { font-size: 11px; background: #667eea22; color: #667eea; padding: 3px 8px; border-radius: 20px; font-weight: 700; }
     .admin-exit { margin-left: auto; background: none; border: none; color: #a0aec0; font-size: 13px; cursor: pointer; font-weight: 600; }
     .admin-exit:hover { color: #fff; }
@@ -363,6 +364,7 @@
 <div id="admin">
   <div class="admin-topbar">
     <span class="admin-brand">⚡ LocalCMS</span>
+    <span class="admin-app-ver" id="adminAppVer" title="LocalCMS app build"></span>
     <span class="admin-badge">Admin</span>
     <button class="admin-exit" onclick="closeAdmin()">← Back to site</button>
   </div>
@@ -504,9 +506,10 @@
               <input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="uploadImages(this)">
             </label>
             <button class="a-btn a-btn-ghost" onclick="addImageByUrl()">🔗 Add by URL</button>
+            <button class="a-btn a-btn-ghost" onclick="downloadAllMedia()">⬇️ Download all</button>
           </div>
         </div>
-        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those — hover a linked item and click ⬇️ to pull a permanent local copy (also updates any page already using it), useful if the original source might disappear. This needs the source server to allow cross-origin downloads; not all do. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
+        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those — hover a linked item and click ⬇️ to pull a permanent local copy (also updates any page already using it), useful if the original source might disappear. This needs the source server to allow cross-origin downloads; not all do. "⬇️ Download all" bundles every externally-linked image and document into one zip (an <code>images/</code> and a <code>documents/</code> folder) and immediately relinks them to those paths — upload both folders to your server before publishing, or the media will 404 until you do. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
         <div class="media-grid" id="adminMediaGrid"></div>
       </div>
 
@@ -626,6 +629,10 @@
 <script>
   const STORAGE_KEY = 'clarityState';
   const CONTENT_CACHE_KEY = 'clarityContentCache';
+  // The app/code build — bump on notable feature or fix commits. Distinct
+  // from content.json's `version`, which tracks published CONTENT and
+  // increments automatically on every publish.
+  const APP_VERSION = '1.1.0';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -1219,6 +1226,7 @@
 
   function openAdmin() {
     document.getElementById('admin').classList.add('open');
+    document.getElementById('adminAppVer').textContent = 'v' + APP_VERSION;
     showAdminSection('pages');
   }
 
@@ -1487,6 +1495,20 @@
     });
   }
 
+  // Pages that reference a media URL directly (in content or as a featured
+  // image) need updating too whenever that URL changes, not just the
+  // media library entry — shared by the single-item and bulk download paths.
+  function relinkMediaReferences(oldUrl, newUrl) {
+    let pagesUpdated = 0;
+    state.pages.forEach(p => {
+      let changed = false;
+      if (p.featuredImage === oldUrl) { p.featuredImage = newUrl; changed = true; }
+      if (p.content && p.content.includes(oldUrl)) { p.content = p.content.split(oldUrl).join(newUrl); changed = true; }
+      if (changed) { p.updatedAt = Date.now(); pagesUpdated++; }
+    });
+    return pagesUpdated;
+  }
+
   async function copyMediaLocally(id, e) {
     e.stopPropagation();
     const img = state.images.find(i => i.id === id);
@@ -1501,15 +1523,7 @@
       const oldUrl = img.data;
       img.data = dataUrl;
       delete img.external;
-      // Pages that already used the external URL directly (in content or as
-      // a featured image) get updated too, not just the media library entry.
-      let pagesUpdated = 0;
-      state.pages.forEach(p => {
-        let changed = false;
-        if (p.featuredImage === oldUrl) { p.featuredImage = dataUrl; changed = true; }
-        if (p.content && p.content.includes(oldUrl)) { p.content = p.content.split(oldUrl).join(dataUrl); changed = true; }
-        if (changed) { p.updatedAt = Date.now(); pagesUpdated++; }
-      });
+      const pagesUpdated = relinkMediaReferences(oldUrl, dataUrl);
       saveState();
       renderAdminMedia();
       showToast(`✅ Saved a local copy${pagesUpdated ? ` · updated ${pagesUpdated} page${pagesUpdated === 1 ? '' : 's'}` : ''}`);
@@ -1517,6 +1531,152 @@
       if (btn) btn.disabled = false;
       showToast('⚠️ Could not download — the source server may be blocking cross-origin requests');
     }
+  }
+
+  // ── ZIP EXPORT (bulk media download) ────────────────────────────────────────
+  // A minimal hand-rolled zip writer (STORE method — no compression) so the
+  // whole app stays a single dependency-free file. Uncompressed zips are
+  // universally readable by every unzip tool; skipping DEFLATE keeps the
+  // implementation to a few dozen lines instead of pulling in a library.
+
+  const CRC_TABLE = (() => {
+    const table = [];
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+
+  function crc32(bytes) {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ bytes[i]) & 0xFF];
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function buildZip(files) {
+    const encoder = new TextEncoder();
+    const now = new Date();
+    const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+    const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+    const localParts = [], centralParts = [];
+    let offset = 0;
+
+    files.forEach(f => {
+      const nameBytes = encoder.encode(f.name);
+      const data = f.data;
+      const crc = crc32(data);
+      const size = data.length;
+
+      const local = new Uint8Array(30 + nameBytes.length);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint16(10, dosTime, true);
+      lv.setUint16(12, dosDate, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, size, true);
+      lv.setUint32(22, size, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      local.set(nameBytes, 30);
+      localParts.push(local, data);
+
+      const central = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(central.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, dosTime, true);
+      cv.setUint16(14, dosDate, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, size, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      central.set(nameBytes, 46);
+      centralParts.push(central);
+
+      offset += local.length + data.length;
+    });
+
+    const centralStart = offset;
+    const centralSize = centralParts.reduce((sum, p) => sum + p.length, 0);
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, files.length, true);
+    ev.setUint16(10, files.length, true);
+    ev.setUint32(12, centralSize, true);
+    ev.setUint32(16, centralStart, true);
+
+    return new Blob([...localParts, ...centralParts, eocd], { type: 'application/zip' });
+  }
+
+  function safeMediaFilename(img, usedNames) {
+    const extMatch = img.data.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/);
+    const ext = extMatch ? extMatch[1].toLowerCase() : (img.kind === 'pdf' ? 'pdf' : 'jpg');
+    const base = slugify((img.name || 'file').replace(/\.[a-zA-Z0-9]+$/, '')) || 'file';
+    let name = base + '.' + ext, n = 2;
+    while (usedNames.has(name)) name = `${base}-${n++}.${ext}`;
+    usedNames.add(name);
+    return name;
+  }
+
+  async function downloadAllMedia() {
+    // Already-relinked items point at a relative path, not an external
+    // host, so re-running this later only picks up genuinely new external
+    // media instead of re-fetching (and 404ing on) its own past output.
+    const targets = state.images.filter(i => i.external && /^https?:\/\//i.test(i.data));
+    if (!targets.length) { showToast('No externally-linked media to download'); return; }
+    showToast(`⬇️ Fetching ${targets.length} file${targets.length === 1 ? '' : 's'}…`);
+
+    const usedNames = { images: new Set(), documents: new Set() };
+    const files = [];
+    const relinks = [];
+    let failed = 0;
+    for (const img of targets) {
+      try {
+        const res = await fetch(img.data);
+        if (!res.ok) throw new Error('bad response');
+        const buf = new Uint8Array(await res.arrayBuffer());
+        const folder = img.kind === 'pdf' ? 'documents' : 'images';
+        const name = safeMediaFilename(img, usedNames[folder]);
+        const path = folder + '/' + name;
+        files.push({ name: path, data: buf });
+        relinks.push({ img, oldUrl: img.data, newUrl: './' + path });
+      } catch (err) {
+        failed++;
+      }
+    }
+
+    if (!files.length) { showToast('⚠️ Could not download any media — the source server may be blocking cross-origin requests'); return; }
+
+    const zipBlob = buildZip(files);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(zipBlob);
+    a.download = 'localcms-media-export.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+
+    let pagesUpdated = 0;
+    relinks.forEach(({ img, oldUrl, newUrl }) => {
+      img.data = newUrl;
+      pagesUpdated += relinkMediaReferences(oldUrl, newUrl);
+    });
+    saveState();
+    renderAdminMedia();
+    showToast(`✅ Downloaded ${files.length} file${files.length === 1 ? '' : 's'} as a zip · relinked to /images and /documents${pagesUpdated ? ` · updated ${pagesUpdated} page${pagesUpdated === 1 ? '' : 's'}` : ''}${failed ? ` · ${failed} failed (CORS-blocked)` : ''}`);
   }
 
   function deleteImage(id, e) {
