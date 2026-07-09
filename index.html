@@ -161,6 +161,7 @@
     .a-page-meta { font-size: 12px; color: #718096; }
     .a-status-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; }
     .a-status-badge.pub { background: #1c4532; color: #68d391; } .a-status-badge.draft { background: #2d3748; color: #a0aec0; }
+    .a-cat-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; background: #667eea22; color: #667eea; white-space: nowrap; }
     .a-form-group { margin-bottom: 16px; }
     .a-form-label { display: block; font-size: 11px; font-weight: 800; color: #a0aec0; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
     .a-input { width: 100%; padding: 10px 12px; background: #161b27; border: 1.5px solid #2a3344; border-radius: 8px; color: #e2e8f0; font-size: 14px; outline: none; transition: border-color .15s; font-family: inherit; }
@@ -906,8 +907,9 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span>
         <div class="a-page-info">
           <div class="a-page-title">${escHtml(p.title)}</div>
-          <div class="a-page-meta">${p.category ? escHtml(p.category)+' · ' : ''}${d}</div>
+          <div class="a-page-meta">${d}</div>
         </div>
+        ${p.category ? `<span class="a-cat-badge">${escHtml(p.category)}</span>` : ''}
         <span class="a-status-badge ${p.status==='published'?'pub':'draft'}">${p.status}</span>
         <div class="reorder-btns">
           <button class="a-btn a-btn-ghost a-btn-sm" onclick="movePage(${i}, -1)" ${i===0?'disabled':''} title="Move up">▲</button>
