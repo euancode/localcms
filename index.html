@@ -34,22 +34,35 @@
     .nav-item-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
     .nav-caret { background: none; border: none; color: var(--text-soft); opacity: .55; cursor: pointer; padding: 4px 6px 4px 0; font-size: 10px; line-height: 1; }
     .nav-caret:hover { opacity: 1; }
-    .mega-panel { display: none; position: absolute; top: calc(100% + 8px); left: 0; min-width: 220px; max-width: 320px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 6px; flex-direction: column; gap: 1px; z-index: 500; }
-    .nav-item-wrap:hover .mega-panel, .mega-panel.open { display: flex; }
-    .mega-panel-item { text-align: left; background: none; border: none; color: var(--text-soft); font-size: 13px; padding: 8px 10px; border-radius: 6px; cursor: pointer; white-space: normal; line-height: 1.35; }
-    .mega-panel-item:hover { background: var(--accent); color: #fff; }
-    .mega-panel-item.hub { font-weight: 700; color: var(--accent); border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 10px; }
-    .mega-panel-item.hub:hover { color: #fff; }
-    /* Categories that end up inside the "More" overflow list still get a
-       flyout submenu — it opens to the LEFT since "More" already sits at
-       the far right edge of the nav bar, so opening rightward would run
-       off-screen. */
     .nav-more-item-wrap { position: relative; display: flex; align-items: stretch; }
     .nav-more-item-wrap .nav-more-item { flex: 1; }
-    .nav-more-item-wrap:hover .mega-panel { display: flex; }
     .nav-more-caret { background: none; border: none; color: var(--text-soft); opacity: .55; cursor: pointer; padding: 0 10px; font-size: 10px; border-radius: 6px; }
     .nav-more-caret:hover { opacity: 1; background: var(--bg); }
-    .mega-panel-flyout { top: 0; left: auto; right: 100%; margin-right: 6px; }
+    /* Full-width mega panel, anchored to the viewport (not the trigger) so
+       it spans the page like the top-level nav items it's attached to.
+       Open/close is JS-driven (mouseenter/mouseleave with a grace timer),
+       not pure CSS :hover — the trigger and the panel below it aren't in
+       the same visual flow, so hover would otherwise drop the instant the
+       mouse crosses the gap between them. */
+    .mega-panel { display: none; position: fixed; left: 0; right: 0; top: 58px; background: var(--card); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); box-shadow: 0 16px 32px rgba(0,0,0,.14); max-height: calc(100vh - 58px); overflow-y: auto; z-index: 500; }
+    .mega-panel.open { display: block; }
+    .mega-panel-inner { max-width: 1100px; margin: 0 auto; padding: 24px 20px; column-width: 200px; column-gap: 32px; }
+    /* Inside "More", a full-width panel would sit on top of (and hide) the
+       "More" list it's opened from — so it's a compact flyout instead,
+       positioned relative to its own trigger row and opening leftward
+       since "More" sits at the nav bar's right edge. Same grouped content,
+       just laid out narrower. */
+    .mega-panel.compact { position: absolute; top: 0; left: auto; right: 100%; margin-right: 6px; min-width: 220px; max-width: 340px; max-height: 70vh; border: 1px solid var(--border); border-radius: 10px; }
+    .mega-panel.compact .mega-panel-inner { max-width: none; margin: 0; padding: 10px; column-width: 170px; column-gap: 18px; }
+    .mega-group { break-inside: avoid; margin-bottom: 20px; }
+    .mega-link { display: block; width: 100%; text-align: left; background: none; border: none; padding: 5px 0; font-size: 14px; color: var(--text-soft); cursor: pointer; line-height: 1.4; }
+    .mega-link:hover { color: var(--accent); }
+    .mega-link.hub { font-weight: 700; color: var(--accent); padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .mega-link.group-label { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); padding: 0 0 8px; }
+    .mega-link.group-label.is-link:hover { color: var(--accent); }
+    div.mega-link.group-label { cursor: default; }
+    .mega-link.section { font-weight: 700; color: var(--text); }
+    .mega-sub { margin-left: 12px; padding-left: 10px; border-left: 2px solid var(--border); }
     .nav-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
     .ver-btn { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 20px; background: var(--bg); border: 1.5px solid var(--border); color: var(--text-soft); cursor: pointer; transition: all .15s; }
     .ver-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -731,6 +744,7 @@
     const container = document.getElementById('navLinks');
     container.innerHTML = items.map(navItemHtml).join('');
     document.getElementById('navMoreWrap').style.display = 'none';
+    bindMegaHoverAll(container);
     requestAnimationFrame(() => layoutNavOverflow(items));
   }
 
@@ -744,43 +758,116 @@
     return `<button class="nav-link${it.active ? ' active' : ''}" onclick="${navLinkOnclick(it)}">${escHtml(it.label)}</button>`;
   }
 
-  // Categories with 2+ pages get a hover/tap "mega menu" dropdown listing
-  // their pages directly, so visitors can jump straight to one without
-  // detouring through the category grid.
+  // Categories with 2+ pages get a hover/tap mega menu spanning the full
+  // page width, grouped by the pages' existing "Parent › Child" breadcrumb
+  // titles (see breadcrumbTitleAndCategory) so multi-level WordPress
+  // sections show up as real nested groups rather than a flat list.
   function navItemHtml(it) {
     if (it.kind !== 'category' || !it.pages) return navLinkBtnHtml(it);
     return `<div class="nav-item-wrap">
       ${navLinkBtnHtml(it)}
-      <button class="nav-caret" onclick="toggleMegaPanel(event, this)" aria-label="Show ${escHtml(it.cat)} pages">▾</button>
-      <div class="mega-panel">${megaPanelItemsHtml(it)}</div>
+      <button class="nav-caret" onclick="openMegaPanel(event, this)" aria-label="Show ${escHtml(it.cat)} pages">▾</button>
+      ${megaPanelHtml(it)}
     </div>`;
   }
 
-  function megaPanelItemsHtml(it) {
-    return it.pages.map(p => `<button class="mega-panel-item${p.title === it.cat ? ' hub' : ''}" onclick="closeNavMore(); showPage('${p.id}')">${escHtml(p.title === it.cat ? 'Overview' : p.title)}</button>`).join('');
-  }
-
-  // When a category overflows into "More" it still needs its sub-pages
-  // reachable — otherwise most real sites (where nearly everything
-  // overflows) would never show a mega menu at all. The flyout opens
-  // leftward (see .mega-panel-flyout) since "More" already sits at the
-  // nav bar's right edge.
+  // A category that overflows into "More" still needs its sub-pages
+  // reachable — on real sites (nearly everything overflows once there are
+  // more than a handful of categories) this is where the mega menu is
+  // actually used most. It gets the compact variant: a full-width panel
+  // here would render on top of (and hide) the still-open "More" list.
   function navMoreItemHtml(it) {
     const link = `<button class="nav-more-item${it.active ? ' active' : ''}" onclick="closeNavMore(); ${navLinkOnclick(it)}">${escHtml(it.label)}</button>`;
     if (it.kind !== 'category' || !it.pages) return link;
     return `<div class="nav-more-item-wrap">
       ${link}
-      <button class="nav-more-caret" onclick="toggleMegaPanel(event, this)" aria-label="Show ${escHtml(it.cat)} pages">‹</button>
-      <div class="mega-panel mega-panel-flyout">${megaPanelItemsHtml(it)}</div>
+      <button class="nav-more-caret" onclick="openMegaPanel(event, this)" aria-label="Show ${escHtml(it.cat)} pages">▸</button>
+      ${megaPanelHtml(it, 'compact')}
     </div>`;
   }
 
-  function toggleMegaPanel(e, caretEl) {
+  // Groups pages by their breadcrumb-prefixed titles: a page titled just
+  // "Foo" is a root-level item; "Foo › Bar" nests "Bar" as a child of a
+  // "Foo" group (which becomes its own clickable page if one exists with
+  // that exact title, e.g. a WordPress section's own overview page).
+  function buildMegaTree(pages, cat) {
+    const hub = pages.find(p => p.title === cat) || null;
+    const root = new Map();
+    pages.forEach(p => {
+      if (p === hub) return;
+      const segs = p.title.split(' › ');
+      let level = root, node = null;
+      segs.forEach((seg, i) => {
+        if (!level.has(seg)) level.set(seg, { label: seg, page: null, children: new Map() });
+        node = level.get(seg);
+        if (i === segs.length - 1) node.page = p;
+        level = node.children;
+      });
+    });
+    return { hub, groups: [...root.values()] };
+  }
+
+  function megaNodeHtml(node, depth) {
+    const hasChildren = node.children.size > 0;
+    let selfHtml;
+    if (depth === 0) {
+      selfHtml = node.page
+        ? `<button class="mega-link group-label is-link" onclick="closeAllMegaPanels(); showPage('${node.page.id}')">${escHtml(node.label)}</button>`
+        : `<div class="mega-link group-label">${escHtml(node.label)}</div>`;
+    } else {
+      const cls = 'mega-link' + (hasChildren ? ' section' : '');
+      selfHtml = node.page
+        ? `<button class="${cls}" onclick="closeAllMegaPanels(); showPage('${node.page.id}')">${escHtml(node.label)}</button>`
+        : `<div class="${cls}">${escHtml(node.label)}</div>`;
+    }
+    const childrenHtml = hasChildren ? `<div class="mega-sub">${[...node.children.values()].map(c => megaNodeHtml(c, depth + 1)).join('')}</div>` : '';
+    return selfHtml + childrenHtml;
+  }
+
+  function megaPanelHtml(it, variant) {
+    const { hub, groups } = buildMegaTree(it.pages, it.cat);
+    const hubHtml = hub ? `<button class="mega-link hub" onclick="closeAllMegaPanels(); showPage('${hub.id}')">Overview</button>` : '';
+    const groupsHtml = groups.map(g => `<div class="mega-group">${megaNodeHtml(g, 0)}</div>`).join('');
+    const cls = 'mega-panel' + (variant === 'compact' ? ' compact' : '');
+    return `<div class="${cls}"><div class="mega-panel-inner">${hubHtml}${groupsHtml}</div></div>`;
+  }
+
+  function closeAllMegaPanels() {
+    closeNavMore();
+  }
+
+  // Always opens (never toggles closed) — on a mouse, hovering the trigger
+  // already opens the panel before a click can land, so a toggle would
+  // immediately re-close it on click. Closing happens via outside-click or
+  // mouse-leave instead; this is purely the tap-to-open path for touch.
+  function openMegaPanel(e, caretEl) {
     e.stopPropagation();
     const panel = caretEl.closest('.nav-item-wrap, .nav-more-item-wrap').querySelector('.mega-panel');
-    const wasOpen = panel.classList.contains('open');
-    document.querySelectorAll('.mega-panel.open').forEach(p => p.classList.remove('open'));
-    if (!wasOpen) panel.classList.add('open');
+    document.querySelectorAll('.mega-panel.open').forEach(p => { if (p !== panel) p.classList.remove('open'); });
+    panel.classList.add('open');
+  }
+
+  // A fixed-position full-width panel isn't a visual descendant of its
+  // trigger, so plain CSS :hover would drop the instant the mouse leaves
+  // the (small) trigger on its way down to the (large) panel below. A
+  // short close-delay timer gives the mouse room to travel between them.
+  function bindMegaHoverAll(root) {
+    root.querySelectorAll('.nav-item-wrap, .nav-more-item-wrap').forEach(wrap => {
+      const panel = wrap.querySelector('.mega-panel');
+      if (!panel || wrap.dataset.megaBound) return;
+      wrap.dataset.megaBound = '1';
+      let closeTimer;
+      const open = () => {
+        clearTimeout(closeTimer);
+        document.querySelectorAll('.mega-panel.open').forEach(p => { if (p !== panel) p.classList.remove('open'); });
+        panel.classList.add('open');
+      };
+      const scheduleClose = () => { closeTimer = setTimeout(() => panel.classList.remove('open'), 250); };
+      wrap.addEventListener('mouseenter', open);
+      wrap.addEventListener('mouseleave', scheduleClose);
+      panel.addEventListener('mouseenter', () => clearTimeout(closeTimer));
+      panel.addEventListener('mouseleave', scheduleClose);
+    });
   }
 
   document.addEventListener('click', e => {
@@ -814,8 +901,11 @@
 
     container.innerHTML = visible.map(navItemHtml).join('');
     document.getElementById('navMoreBtn').classList.toggle('active', overflow.some(o => o.active));
-    document.getElementById('navMoreMenu').innerHTML = overflow.map(navMoreItemHtml).join('');
+    const moreMenu = document.getElementById('navMoreMenu');
+    moreMenu.innerHTML = overflow.map(navMoreItemHtml).join('');
     document.getElementById('navMoreWrap').style.display = '';
+    bindMegaHoverAll(container);
+    bindMegaHoverAll(moreMenu);
   }
 
   function toggleNavMore(e) {
