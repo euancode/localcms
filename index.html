@@ -192,6 +192,9 @@
     .media-thumb-pdf .pdf-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
     .media-thumb-del { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; cursor: pointer; display: none; align-items: center; justify-content: center; }
     .media-thumb:hover .media-thumb-del { display: flex; }
+    .media-thumb-copy { position: absolute; top: 4px; right: 30px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; cursor: pointer; display: none; align-items: center; justify-content: center; }
+    .media-thumb:hover .media-thumb-copy { display: flex; }
+    .media-thumb-copy:disabled { opacity: .5; cursor: default; }
     .media-thumb-name { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.7); color: #fff; font-size: 10px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .media-ext-badge { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,.7); color: #fff; font-size: 10px; padding: 2px 5px; border-radius: 10px; line-height: 1.4; }
     .cat-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #161b27; border: 1px solid #2a3344; border-radius: 8px; margin-bottom: 8px; }
@@ -429,7 +432,7 @@
             <button class="a-btn a-btn-ghost" onclick="addImageByUrl()">🔗 Add by URL</button>
           </div>
         </div>
-        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
+        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those — hover a linked item and click ⬇️ to pull a permanent local copy (also updates any page already using it), useful if the original source might disappear. This needs the source server to allow cross-origin downloads; not all do. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
         <div class="media-grid" id="adminMediaGrid"></div>
       </div>
 
@@ -1074,8 +1077,50 @@
         ${mediaThumbInnerHtml(img)}
         ${img.external ? `<span class="media-ext-badge" title="Linked by URL, not stored in your browser">🔗</span>` : ''}
         <div class="media-thumb-name">${escHtml(img.name)}</div>
+        ${img.external ? `<button class="media-thumb-copy" id="copyBtn-${img.id}" onclick="copyMediaLocally('${img.id}',event)" title="Save a local copy in your browser">⬇️</button>` : ''}
         <button class="media-thumb-del" onclick="deleteImage('${img.id}',event)">✕</button>
       </div>`).join('');
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function copyMediaLocally(id, e) {
+    e.stopPropagation();
+    const img = state.images.find(i => i.id === id);
+    if (!img || !img.external) return;
+    const btn = document.getElementById('copyBtn-' + id);
+    if (btn) btn.disabled = true;
+    showToast('⬇️ Downloading a local copy…');
+    try {
+      const res = await fetch(img.data);
+      if (!res.ok) throw new Error('bad response');
+      const dataUrl = await blobToDataUrl(await res.blob());
+      const oldUrl = img.data;
+      img.data = dataUrl;
+      delete img.external;
+      // Pages that already used the external URL directly (in content or as
+      // a featured image) get updated too, not just the media library entry.
+      let pagesUpdated = 0;
+      state.pages.forEach(p => {
+        let changed = false;
+        if (p.featuredImage === oldUrl) { p.featuredImage = dataUrl; changed = true; }
+        if (p.content && p.content.includes(oldUrl)) { p.content = p.content.split(oldUrl).join(dataUrl); changed = true; }
+        if (changed) { p.updatedAt = Date.now(); pagesUpdated++; }
+      });
+      saveState();
+      renderAdminMedia();
+      showToast(`✅ Saved a local copy${pagesUpdated ? ` · updated ${pagesUpdated} page${pagesUpdated === 1 ? '' : 's'}` : ''}`);
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showToast('⚠️ Could not download — the source server may be blocking cross-origin requests');
+    }
   }
 
   function deleteImage(id, e) {
