@@ -1389,22 +1389,36 @@
     const rootId = rootPage ? rootPage.id : null;
 
     // WordPress pages here don't really use categories (only "Uncategorized"
-    // exists) — the real organizing structure is page hierarchy. So: the
-    // homepage (if identified) is dropped from the chain, the next level up
-    // becomes the page's category (auto-created if new), and any remaining
-    // nesting stays as a "Parent › Child" title prefix.
+    // exists) — the real organizing structure is page hierarchy. So: walk
+    // each page's ancestry from itself up towards the root and use the
+    // NEAREST ancestor with at least 2 children as its category
+    // (auto-created if new) — a threshold of 1 would turn every
+    // single-child chain into its own near-empty category, and picking the
+    // topmost qualifying ancestor instead of the nearest one would collapse
+    // separate meaningful sub-sections into one oversized category.
+    // Ancestors above the chosen category (including the homepage, if
+    // identified) are dropped entirely; ancestors below it, down to the
+    // page itself, stay as a "Parent › Child" title prefix.
+    const childCount = {};
+    contentItems.forEach(it => {
+      if (it.parent && it.parent !== '0') childCount[it.parent] = (childCount[it.parent] || 0) + 1;
+    });
+
     function breadcrumbTitleAndCategory(it) {
-      const chain = [it.title];
-      const idChain = [it.id];
+      const chain = [it];
       let cur = it, guard = 0;
       while (cur.parent && cur.parent !== '0' && byId[cur.parent] && guard++ < 10) {
         cur = byId[cur.parent];
-        chain.unshift(cur.title);
-        idChain.unshift(cur.id);
+        chain.unshift(cur);
       }
-      if (chain.length > 1 && idChain[0] === rootId) chain.shift();
-      if (chain.length > 1) return { title: chain.slice(1).join(' › '), category: chain[0] };
-      return { title: chain[0], category: '' };
+      if (chain.length > 1 && chain[0].id === rootId) chain.shift();
+
+      let categoryIdx = -1;
+      for (let i = chain.length - 2; i >= 0; i--) {
+        if ((childCount[chain[i].id] || 0) >= 2) { categoryIdx = i; break; }
+      }
+      if (categoryIdx === -1) return { title: chain[chain.length - 1].title, category: '' };
+      return { title: chain.slice(categoryIdx + 1).map(x => x.title).join(' › '), category: chain[categoryIdx].title };
     }
 
     function toEmbedUrl(url) {
