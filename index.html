@@ -418,6 +418,13 @@
               <select class="a-select" id="editCategory"></select>
             </div>
             <div class="a-form-group">
+              <label class="a-form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="editShowInNav" style="width:auto">
+                📌 Show in main nav
+              </label>
+              <div style="font-size:11px;color:#4a5568;margin-top:4px">Adds a direct nav link to this page, after the category links. Useful for standalone pages that don't belong in a category.</div>
+            </div>
+            <div class="a-form-group">
               <label class="a-form-label">Featured Image</label>
               <div id="editImgPreview"></div>
               <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
@@ -570,8 +577,11 @@
         </div>
         <button class="a-btn a-btn-primary" onclick="saveSettings()">Save Settings</button>
         <div style="margin-top:24px;padding-top:20px;border-top:1px solid #2a3344">
-          <button class="a-btn a-btn-danger a-btn-sm" onclick="resetToPublished()">↩ Reset to published version</button>
-          <div style="font-size:11px;color:#4a5568;margin-top:6px">Discards all local edits and reloads the last published content</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="a-btn a-btn-danger a-btn-sm" onclick="resetToPublished()">↩ Reset to published version</button>
+            <button class="a-btn a-btn-danger a-btn-sm" onclick="deleteAllContent()">🗑️ Delete all content</button>
+          </div>
+          <div style="font-size:11px;color:#4a5568;margin-top:6px">"Reset" discards local edits and reloads the last published content. "Delete all" wipes every page, category, media item, and member — locally only, until you publish. Neither affects the live site until you submit and publish.</div>
         </div>
       </div>
 
@@ -622,6 +632,7 @@
   let prevCat = null;
   let currentCat = null;
   let currentView = 'home';
+  let currentPageId = null;
   let mediaPickerCb = null;
   let toastTimer;
 
@@ -682,11 +693,18 @@
   }
 
   function renderNavLinks() {
-    const items = [{ label: 'Home', cat: null, active: currentView === 'home' }];
+    const items = [{ kind: 'home', label: 'Home', active: currentView === 'home' }];
     state.categories.forEach(cat => {
       if (isCategoryLocked(cat)) return; // members-only categories are hidden entirely when logged out
       if (state.pages.some(p => p.category === cat && p.status === 'published')) {
-        items.push({ label: cat, cat, active: currentView === 'category' && currentCat === cat });
+        items.push({ kind: 'category', label: cat, cat, active: currentView === 'category' && currentCat === cat });
+      }
+    });
+    // Standalone pages flagged "show in main nav" render after categories —
+    // simple additive ordering rather than a fully reorderable unified list.
+    state.pages.forEach(p => {
+      if (p.showInNav && p.status === 'published' && !isCategoryLocked(p.category)) {
+        items.push({ kind: 'page', label: p.title, pageId: p.id, active: currentView === 'page' && currentPageId === p.id });
       }
     });
     const container = document.getElementById('navLinks');
@@ -695,9 +713,14 @@
     requestAnimationFrame(() => layoutNavOverflow(items));
   }
 
+  function navLinkOnclick(it) {
+    if (it.kind === 'home') return `showView('home')`;
+    if (it.kind === 'page') return `showPage('${it.pageId}')`;
+    return `showCategory('${escHtml(it.cat)}')`;
+  }
+
   function navLinkBtnHtml(it) {
-    const onclick = it.cat === null ? `showView('home')` : `showCategory('${escHtml(it.cat)}')`;
-    return `<button class="nav-link${it.active ? ' active' : ''}" onclick="${onclick}">${escHtml(it.label)}</button>`;
+    return `<button class="nav-link${it.active ? ' active' : ''}" onclick="${navLinkOnclick(it)}">${escHtml(it.label)}</button>`;
   }
 
   // If the rendered links overflow the available nav width, collapse the
@@ -725,7 +748,7 @@
 
     container.innerHTML = visible.map(navLinkBtnHtml).join('');
     document.getElementById('navMoreBtn').classList.toggle('active', overflow.some(o => o.active));
-    document.getElementById('navMoreMenu').innerHTML = overflow.map(it => `<button class="nav-more-item${it.active ? ' active' : ''}" onclick="closeNavMore(); ${it.cat === null ? `showView('home')` : `showCategory('${escHtml(it.cat)}')`}">${escHtml(it.label)}</button>`).join('');
+    document.getElementById('navMoreMenu').innerHTML = overflow.map(it => `<button class="nav-more-item${it.active ? ' active' : ''}" onclick="closeNavMore(); ${navLinkOnclick(it)}">${escHtml(it.label)}</button>`).join('');
     document.getElementById('navMoreWrap').style.display = '';
   }
 
@@ -803,7 +826,12 @@
     prevView = currentView; prevCat = currentCat;
     currentCat = cat;
     document.getElementById('catLabel').textContent = cat;
-    const pages = state.pages.filter(p => p.category === cat && p.status === 'published');
+    // A page that shares its exact title with the category (a "hub" page
+    // that itself has children — see breadcrumbTitleAndCategory) reads as
+    // the category's landing page, so it's pinned first.
+    const pages = state.pages
+      .filter(p => p.category === cat && p.status === 'published')
+      .sort((a, b) => (b.title === cat ? 1 : 0) - (a.title === cat ? 1 : 0));
     document.getElementById('catGrid').innerHTML = pages.length ? pages.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">📭</div><p>No pages in "${cat}" yet.</p></div>`;
     activateView('category');
     if (!opts || opts.push !== false) navigateUrl(location.pathname + '?category=' + encodeURIComponent(cat), opts && opts.replace);
@@ -829,6 +857,7 @@
       return;
     }
     prevView = currentView; prevCat = currentCat;
+    currentPageId = id;
     const d = new Date(page.updatedAt).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'});
     document.getElementById('pageHeroImg').innerHTML = page.featuredImage ? `<img class="page-hero-img" src="${page.featuredImage}" alt="">` : '';
     document.getElementById('pageCat').textContent = page.category || '';
@@ -1107,6 +1136,7 @@
           <div class="a-page-meta">${d}</div>
         </div>
         ${p.category ? `<span class="a-cat-badge">${escHtml(p.category)}</span>` : ''}
+        ${p.showInNav ? `<span class="a-cat-badge" style="background:#d69e2e22;color:#d69e2e" title="Shows a direct link in the main nav">📌 Nav</span>` : ''}
         <span class="a-status-badge ${p.status==='published'?'pub':'draft'}">${p.status}</span>
         <div class="reorder-btns">
           <button class="a-btn a-btn-ghost a-btn-sm" onclick="movePage(${i}, -1)" ${filtering || i===0?'disabled':''} title="Move up">▲</button>
@@ -1142,6 +1172,7 @@
     document.getElementById('editor').innerHTML = '';
     document.getElementById('editStatus').value = 'published';
     document.getElementById('editSlug').value = '';
+    document.getElementById('editShowInNav').checked = false;
     document.getElementById('editDelBtn').style.display = 'none';
     updateImgPreview(); populateCatSelect(''); updateSlugPreview();
     document.getElementById('a-pages').classList.remove('active');
@@ -1159,6 +1190,7 @@
     document.getElementById('editor').innerHTML = page.content;
     document.getElementById('editStatus').value = page.status;
     document.getElementById('editSlug').value = page.slug;
+    document.getElementById('editShowInNav').checked = !!page.showInNav;
     document.getElementById('editDelBtn').style.display = 'inline-flex';
     updateImgPreview(); populateCatSelect(page.category); updateSlugPreview();
     document.getElementById('a-pages').classList.remove('active');
@@ -1185,14 +1217,15 @@
     const category = document.getElementById('editCategory').value;
     const status = document.getElementById('editStatus').value;
     const slug = document.getElementById('editSlug').value.trim() || slugify(title);
+    const showInNav = document.getElementById('editShowInNav').checked;
     const now = Date.now();
     if (editingId) {
       const idx = state.pages.findIndex(p => p.id === editingId);
-      if (idx !== -1) state.pages[idx] = {...state.pages[idx], title, content, category, status, slug, featuredImage: editingFeaturedImage, updatedAt: now};
+      if (idx !== -1) state.pages[idx] = {...state.pages[idx], title, content, category, status, slug, showInNav, featuredImage: editingFeaturedImage, updatedAt: now};
       showToast('✅ Saved');
     } else {
       const id = 'p' + now;
-      state.pages.push({id, title, content, category, status, slug, featuredImage: editingFeaturedImage, createdAt: now, updatedAt: now});
+      state.pages.push({id, title, content, category, status, slug, showInNav, featuredImage: editingFeaturedImage, createdAt: now, updatedAt: now});
       editingId = id;
       document.getElementById('editId').value = id;
       document.getElementById('editDelBtn').style.display = 'inline-flex';
@@ -1417,7 +1450,16 @@
       for (let i = chain.length - 2; i >= 0; i--) {
         if ((childCount[chain[i].id] || 0) >= 2) { categoryIdx = i; break; }
       }
-      if (categoryIdx === -1) return { title: chain[chain.length - 1].title, category: '' };
+      if (categoryIdx === -1) {
+        // A page with no qualifying ancestor category might still BE one —
+        // if it has 2+ children of its own, it becomes a category in its
+        // own right. Self-assigning it into that category (rather than
+        // leaving it uncategorised) means it shows up as a landing card
+        // inside its own category grid instead of getting a separate,
+        // confusingly-identical-looking standalone nav entry.
+        const isOwnCategory = (childCount[it.id] || 0) >= 2;
+        return { title: chain[chain.length - 1].title, category: isOwnCategory ? it.title : '' };
+      }
       return { title: chain.slice(categoryIdx + 1).map(x => x.title).join(' › '), category: chain[categoryIdx].title };
     }
 
@@ -1444,6 +1486,12 @@
 
     const pages = contentItems.map(it => {
       const bc = breadcrumbTitleAndCategory(it);
+      // Published top-level pages that didn't land in a category (i.e.
+      // aren't a hub for their own children — those self-assign above)
+      // are exactly WordPress's real top-level nav items that LocalCMS's
+      // category-only nav would otherwise drop. Flag them to show
+      // directly in the nav alongside categories.
+      const showInNav = it.type === 'page' && it.parent === '0' && it.status === 'publish' && bc.category === '';
       return {
         wpId: it.id,
         title: bc.title,
@@ -1453,6 +1501,7 @@
         status: it.status === 'publish' ? 'published' : 'draft',
         kind: it.type,
         link: it.link,
+        showInNav,
       };
     });
 
@@ -1473,15 +1522,17 @@
     const imgCount = parsed.images.filter(i => i.mediaKind !== 'pdf').length;
     const pdfCount = parsed.images.filter(i => i.mediaKind === 'pdf').length;
     const newCategories = [...new Set(newPages.map(p => p.category).filter(Boolean))].filter(c => !state.categories.includes(c));
+    const navPageCount = newPages.filter(p => p.showInNav).length;
     el.innerHTML = `
       <div class="publish-info">
         <div class="publish-row"><span class="publish-label">Pages &amp; posts found</span><span class="publish-val">${parsed.pages.length} (${pubCount} published, ${draftCount} draft)</span></div>
         <div class="publish-row"><span class="publish-label">New to import</span><span class="publish-val">${newCount}${newCount !== parsed.pages.length ? ` (${parsed.pages.length - newCount} already imported previously — will be skipped)` : ''}</span></div>
         <div class="publish-row"><span class="publish-label">New categories</span><span class="publish-val">${newCategories.length ? `${newCategories.length}: ${newCategories.map(escHtml).join(', ')}` : 'None — pages will be uncategorised'}</span></div>
+        <div class="publish-row"><span class="publish-label">Standalone nav pages</span><span class="publish-val">${navPageCount} (published top-level pages with no category — flagged 📌 Show in main nav)</span></div>
         <div class="publish-row"><span class="publish-label">Media references</span><span class="publish-val">${imgCount} images, ${pdfCount} PDFs (linked by URL, not downloaded)</span></div>
         <div class="publish-row"><span class="publish-label">Skipped items</span><span class="publish-val">${parsed.skipped} (nav menus, templates, styles — not content)</span></div>
       </div>
-      <div style="font-size:12px;color:#718096;margin-bottom:16px">Nested WordPress pages are flattened: the top-level parent becomes the page's category (auto-created), and any deeper nesting stays as a "Parent › Child" title prefix. Links between imported pages are rewritten to stay on this site; links to anything not being imported still point at the old WordPress URLs. All imported items land as local drafts/pages here — nothing publishes automatically.</div>
+      <div style="font-size:12px;color:#718096;margin-bottom:16px">Nested WordPress pages are flattened: a top-level page with 2+ children becomes a category (auto-created) and appears as that category's landing card; other top-level pages with no children are flagged to show directly in the nav. Any deeper nesting stays as a "Parent › Child" title prefix. Links between imported pages are rewritten to stay on this site; links to anything not being imported still point at the old WordPress URLs. All imported items land as local drafts/pages here — nothing publishes automatically.</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="a-btn a-btn-primary" onclick="confirmWxrImport()">Import ${newCount} item${newCount === 1 ? '' : 's'}</button>
         <button class="a-btn a-btn-ghost" onclick="cancelWxrImport()">Cancel</button>
@@ -1550,7 +1601,7 @@
       if (p.link) linkMap[normalizeWpUrl(p.link)] = uniqueSlug;
       idMap[p.wpId] = uniqueSlug;
       slugMap[baseSlug] = uniqueSlug;
-      toInsert.push({ wpId: p.wpId, marker, slug: uniqueSlug, title: p.title, category: p.category, content: p.content, status: p.status, i });
+      toInsert.push({ wpId: p.wpId, marker, slug: uniqueSlug, title: p.title, category: p.category, content: p.content, status: p.status, showInNav: p.showInNav, i });
     });
 
     // New categories (from page hierarchy — see breadcrumbTitleAndCategory)
@@ -1574,6 +1625,7 @@
         content: rewriteInternalLinks(t.content, linkMap, idMap, slugMap, pendingWxrImport.siteHost),
         featuredImage: null,
         status: t.status,
+        showInNav: !!t.showInNav,
         createdAt: now,
         updatedAt: now,
         importedFrom: t.marker,
@@ -1990,6 +2042,20 @@
     state = fresh; saveState();
     showToast('✅ Reset to published version');
     loadSettings();
+  }
+
+  function deleteAllContent() {
+    if (!confirm('Delete ALL local content? This removes every page, category, media item, and member. This cannot be undone, though it only affects your local draft — the live site is untouched until you submit and publish.')) return;
+    if (prompt('Type DELETE to confirm:') !== 'DELETE') { showToast('Cancelled'); return; }
+    state.pages = [];
+    state.categories = [];
+    state.images = [];
+    state.members = [];
+    state.memberOnlyCategories = [];
+    editingId = null; editingFeaturedImage = null;
+    saveState();
+    showToast('🗑️ All content deleted');
+    showAdminSection('pages');
   }
 
   // ── UTILS ────────────────────────────────────────────────────────────────────
