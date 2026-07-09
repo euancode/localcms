@@ -246,6 +246,7 @@
       </div>
       <button class="ver-btn" id="verBtn" onclick="showVersionHistory()">v1</button>
       <span class="ver-date-label" id="verDateLabel"></span>
+      <button class="nav-search-btn" id="memberBtn" onclick="handleMemberButtonClick()" title="Member login">👤</button>
       <button class="nav-lock" onclick="openLock()">🔒</button>
     </div>
   </div>
@@ -278,6 +279,17 @@
     <h1 class="page-title" id="pageTitle"></h1>
     <div class="page-content" id="pageContent"></div>
   </div>
+  <div class="site-view" id="view-locked">
+    <div style="max-width:400px;margin:0 auto;padding:64px 20px;text-align:center">
+      <div style="font-size:40px;margin-bottom:16px">🔒</div>
+      <h2 style="font-size:22px;font-weight:800;margin-bottom:10px">Members Only</h2>
+      <p style="color:var(--text-soft);margin-bottom:24px">This section is for logged-in members. Log in below to continue.</p>
+      <div class="modal-err" id="lockedErr"></div>
+      <input type="email" class="modal-input" id="lockedEmailInput" placeholder="Email">
+      <input type="password" class="modal-input" id="lockedPwInput" placeholder="Password" onkeydown="if(event.key==='Enter')checkLockedLogin()">
+      <button class="modal-btn" onclick="checkLockedLogin()">Log In</button>
+    </div>
+  </div>
 </main>
 
 <!-- PASSWORD MODAL -->
@@ -287,6 +299,17 @@
     <div class="modal-err" id="pwErr"></div>
     <input type="password" class="modal-input" id="pwInput" placeholder="Password" onkeydown="if(event.key==='Enter')checkPassword()">
     <button class="modal-btn" onclick="checkPassword()">Enter</button>
+  </div>
+</div>
+
+<!-- MEMBER LOGIN MODAL -->
+<div class="modal-overlay" id="memberModal">
+  <div class="modal-box">
+    <div class="modal-title">🔒 Member Login</div>
+    <div class="modal-err" id="memberErr"></div>
+    <input type="email" class="modal-input" id="memberEmailInput" placeholder="Email">
+    <input type="password" class="modal-input" id="memberPwInput" placeholder="Password" onkeydown="if(event.key==='Enter')checkMemberLogin()">
+    <button class="modal-btn" onclick="checkMemberLogin()">Log In</button>
   </div>
 </div>
 
@@ -325,6 +348,9 @@
       </button>
       <button class="a-nav-item" id="anav-import" onclick="showAdminSection('import')">
         <span class="a-nav-icon">📥</span><span class="a-nav-lbl">Import</span>
+      </button>
+      <button class="a-nav-item" id="anav-members" onclick="showAdminSection('members')">
+        <span class="a-nav-icon">👥</span><span class="a-nav-lbl">Members</span>
       </button>
       <div class="a-nav-section">Publish</div>
       <button class="a-nav-item" id="anav-publish" onclick="showAdminSection('publish')">
@@ -445,6 +471,24 @@
         <div class="media-grid" id="adminMediaGrid"></div>
       </div>
 
+      <!-- MEMBERS -->
+      <div class="a-section" id="a-members">
+        <h2 class="a-heading">Members</h2>
+        <p style="font-size:13px;color:#a0aec0;margin-bottom:8px;line-height:1.6">Mark a category "Members only" in Categories to hide it from logged-out visitors — nav, search, and listings all exclude it, and direct links prompt for login instead of showing content.</p>
+        <p style="font-size:12px;color:#d69e2e;margin-bottom:20px;line-height:1.6">⚠️ This is a soft gate, not real security. content.json (including member-only page content and this member list) is downloaded in full by every visitor's browser — hiding it in the UI doesn't stop anyone who inspects page source or fetches content.json directly. Don't put anything genuinely sensitive behind it.</p>
+        <div class="a-form-group">
+          <label class="a-form-label">Invite a member</label>
+          <input type="email" class="a-input" id="inviteEmail" placeholder="member@example.com" style="max-width:320px;margin-bottom:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;max-width:320px">
+            <input type="text" class="a-input" id="invitePassword" placeholder="Password">
+            <button class="a-btn a-btn-ghost a-btn-sm" onclick="generateInvitePassword()">Generate</button>
+          </div>
+        </div>
+        <button class="a-btn a-btn-primary" onclick="sendMemberInvite()">📧 Add &amp; Email Invite</button>
+        <div style="font-size:11px;color:#4a5568;margin:8px 0 20px">Adds them to the member list (published like everything else — publish for the login to actually work) and drafts an invite email with their credentials.</div>
+        <div id="membersList"></div>
+      </div>
+
       <!-- IMPORT -->
       <div class="a-section" id="a-import">
         <h2 class="a-heading">Import from WordPress</h2>
@@ -547,19 +591,27 @@
   // number in it and refreshes visitors automatically.
   let SITE_CONTENT;
 
+  // Backfills fields that might be missing from a content.json published
+  // before they existed, so code elsewhere can always assume they're arrays.
+  function normalizeSiteContent(json) {
+    if (!Array.isArray(json.members)) json.members = [];
+    if (!Array.isArray(json.memberOnlyCategories)) json.memberOnlyCategories = [];
+    return json;
+  }
+
   async function loadSiteContent() {
     try {
       const res = await fetch('./content.json', { cache: 'no-store' });
       if (!res.ok) throw new Error('bad response');
-      const json = await res.json();
+      const json = normalizeSiteContent(await res.json());
       try { localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(json)); } catch(e) {}
       return json;
     } catch(e) {
       try {
         const cached = JSON.parse(localStorage.getItem(CONTENT_CACHE_KEY) || 'null');
-        if (cached) return cached;
+        if (cached) return normalizeSiteContent(cached);
       } catch(e2) {}
-      return { version: 0, publishedAt: Date.now(), adminEmail: '', changelog: [], siteTitle: 'LocalCMS', siteTagline: '', siteUrl: '', categories: [], pages: [] };
+      return normalizeSiteContent({ version: 0, publishedAt: Date.now(), adminEmail: '', changelog: [], siteTitle: 'LocalCMS', siteTagline: '', siteUrl: '', categories: [], pages: [] });
     }
   }
 
@@ -623,12 +675,16 @@
     document.getElementById('verDateLabel').textContent = 'Updated ' + formatDate(SITE_CONTENT.publishedAt);
     updateVerBtnIndicator();
     applyThemeColor(state.themeColor);
+    const memberBtn = document.getElementById('memberBtn');
+    if (isMemberLoggedIn()) { memberBtn.textContent = '👤✓'; memberBtn.title = `Logged in as ${currentMemberEmail()} — click to log out`; }
+    else { memberBtn.textContent = '👤'; memberBtn.title = 'Member login'; }
     renderNavLinks();
   }
 
   function renderNavLinks() {
     const items = [{ label: 'Home', cat: null, active: currentView === 'home' }];
     state.categories.forEach(cat => {
+      if (isCategoryLocked(cat)) return; // members-only categories are hidden entirely when logged out
       if (state.pages.some(p => p.category === cat && p.status === 'published')) {
         items.push({ label: cat, cat, active: currentView === 'category' && currentCat === cat });
       }
@@ -705,8 +761,14 @@
     const pagePath = params.get('page');
     const cat = params.get('category');
     const page = pagePath ? state.pages.find(p => p.slug === pagePath && p.status === 'published') : null;
-    if (page) { showPage(page.id, { push: false, replace }); return; }
-    if (cat && state.categories.includes(cat)) { showCategory(cat, { push: false, replace }); return; }
+    if (page) {
+      if (isCategoryLocked(page.category)) { activateView('locked'); return; }
+      showPage(page.id, { push: false, replace }); return;
+    }
+    if (cat && state.categories.includes(cat)) {
+      if (isCategoryLocked(cat)) { activateView('locked'); return; }
+      showCategory(cat, { push: false, replace }); return;
+    }
     showView('home', { push: false, replace });
   }
 
@@ -727,12 +789,17 @@
   }
 
   function renderHomeGrid() {
-    const pub = state.pages.filter(p => p.status === 'published');
+    const pub = state.pages.filter(p => p.status === 'published' && !isCategoryLocked(p.category));
     const grid = document.getElementById('homeGrid');
     grid.innerHTML = pub.length ? pub.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">✍️</div><p>No published pages yet.</p></div>`;
   }
 
   function showCategory(cat, opts) {
+    if (isCategoryLocked(cat)) {
+      activateView('locked');
+      if (!opts || opts.push !== false) navigateUrl(location.pathname + '?category=' + encodeURIComponent(cat), opts && opts.replace);
+      return;
+    }
     prevView = currentView; prevCat = currentCat;
     currentCat = cat;
     document.getElementById('catLabel').textContent = cat;
@@ -756,6 +823,11 @@
   function showPage(id, opts) {
     const page = state.pages.find(p => p.id === id);
     if (!page) return;
+    if (isCategoryLocked(page.category)) {
+      activateView('locked');
+      if (!opts || opts.push !== false) navigateUrl(location.pathname + '?page=' + encodeURIComponent(page.slug), opts && opts.replace);
+      return;
+    }
     prevView = currentView; prevCat = currentCat;
     const d = new Date(page.updatedAt).toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'});
     document.getElementById('pageHeroImg').innerHTML = page.featuredImage ? `<img class="page-hero-img" src="${page.featuredImage}" alt="">` : '';
@@ -794,7 +866,7 @@
     const results = document.getElementById('searchResults');
     if (!q) { results.innerHTML = ''; return; }
     const matches = state.pages
-      .filter(p => p.status === 'published')
+      .filter(p => p.status === 'published' && !isCategoryLocked(p.category))
       .map(p => {
         const title = p.title.toLowerCase();
         const text = stripHtml(p.content);
@@ -874,6 +946,82 @@
     if (e.target === document.getElementById('pwModal')) document.getElementById('pwModal').classList.remove('open');
   });
 
+  // ── MEMBER LOGIN ─────────────────────────────────────────────────────────────
+  // Soft gate only: content.json (including member-only pages and the member
+  // list itself) is downloaded in full by every visitor, so this hides
+  // content from casual browsing via the UI — it does not protect it from
+  // anyone who inspects page source or fetches content.json directly.
+
+  const MEMBER_SESSION_KEY = 'clarityMemberSession';
+
+  function isMemberLoggedIn() {
+    try {
+      const s = JSON.parse(localStorage.getItem(MEMBER_SESSION_KEY) || 'null');
+      return !!(s && s.email && state.members.some(m => m.email.toLowerCase() === s.email.toLowerCase()));
+    } catch(e) { return false; }
+  }
+
+  function currentMemberEmail() {
+    try { return (JSON.parse(localStorage.getItem(MEMBER_SESSION_KEY) || 'null') || {}).email || null; } catch(e) { return null; }
+  }
+
+  function isCategoryGated(cat) { return !!(cat && state.memberOnlyCategories.includes(cat)); }
+  function isCategoryLocked(cat) { return isCategoryGated(cat) && !isMemberLoggedIn(); }
+
+  function handleMemberButtonClick() {
+    if (isMemberLoggedIn()) {
+      if (confirm(`Logged in as ${currentMemberEmail()}. Log out?`)) memberLogout();
+    } else {
+      openMemberModal();
+    }
+  }
+
+  function openMemberModal() {
+    document.getElementById('memberModal').classList.add('open');
+    document.getElementById('memberEmailInput').value = '';
+    document.getElementById('memberPwInput').value = '';
+    document.getElementById('memberErr').textContent = '';
+    setTimeout(() => document.getElementById('memberEmailInput').focus(), 100);
+  }
+
+  function attemptMemberLogin(email, pw) {
+    const match = state.members.find(m => m.email.toLowerCase() === (email || '').trim().toLowerCase() && m.password === pw);
+    if (!match) return false;
+    localStorage.setItem(MEMBER_SESSION_KEY, JSON.stringify({ email: match.email }));
+    return true;
+  }
+
+  function checkMemberLogin() {
+    const ok = attemptMemberLogin(document.getElementById('memberEmailInput').value, document.getElementById('memberPwInput').value);
+    if (ok) {
+      document.getElementById('memberModal').classList.remove('open');
+      initSite(); applyRouteFromLocation(true);
+      showToast('✅ Logged in');
+    } else {
+      document.getElementById('memberErr').textContent = 'Incorrect email or password';
+    }
+  }
+
+  function checkLockedLogin() {
+    const ok = attemptMemberLogin(document.getElementById('lockedEmailInput').value, document.getElementById('lockedPwInput').value);
+    if (ok) {
+      initSite(); applyRouteFromLocation(true);
+      showToast('✅ Logged in');
+    } else {
+      document.getElementById('lockedErr').textContent = 'Incorrect email or password';
+    }
+  }
+
+  function memberLogout() {
+    localStorage.removeItem(MEMBER_SESSION_KEY);
+    initSite(); showView('home');
+    showToast('Logged out');
+  }
+
+  document.getElementById('memberModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('memberModal')) document.getElementById('memberModal').classList.remove('open');
+  });
+
   // ── ADMIN ────────────────────────────────────────────────────────────────────
 
   function openAdmin() {
@@ -896,6 +1044,7 @@
     if (name === 'pages') renderAdminPages();
     else if (name === 'categories') renderAdminCategories();
     else if (name === 'media') renderAdminMedia();
+    else if (name === 'members') renderMembersList();
     else if (name === 'publish') renderPublish();
     else if (name === 'settings') loadSettings();
   }
@@ -1475,6 +1624,7 @@
     if (!state.categories.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">🏷️</div><p>No categories yet.</p></div>`; return; }
     list.innerHTML = state.categories.map((cat, i) => {
       const count = state.pages.filter(p => p.category === cat).length;
+      const safeCat = encodeURIComponent(cat).replace(/'/g, '%27');
       return `<div class="cat-item" draggable="true"
         ondragstart="catDragStart(event, ${i})"
         ondragover="event.preventDefault(); this.classList.add('drag-over')"
@@ -1483,6 +1633,10 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span>
         <span class="cat-name">${escHtml(cat)}</span>
         <span class="cat-count">${count} page${count!==1?'s':''}</span>
+        <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#a0aec0;cursor:pointer;white-space:nowrap">
+          <input type="checkbox" ${state.memberOnlyCategories.includes(cat)?'checked':''} onchange="toggleCategoryMembersOnly('${safeCat}', this.checked)">
+          🔒 Members only
+        </label>
         <div class="reorder-btns">
           <button class="a-btn a-btn-ghost a-btn-sm" onclick="moveCategory(${i}, -1)" ${i===0?'disabled':''} title="Move up">▲</button>
           <button class="a-btn a-btn-ghost a-btn-sm" onclick="moveCategory(${i}, 1)" ${i===state.categories.length-1?'disabled':''} title="Move down">▼</button>
@@ -1490,6 +1644,13 @@
         ${count===0 ? `<button class="a-btn a-btn-danger a-btn-sm" onclick="deleteCategory('${escHtml(cat)}')">Delete</button>` : ''}
       </div>`;
     }).join('');
+  }
+
+  function toggleCategoryMembersOnly(safeCat, checked) {
+    const cat = decodeURIComponent(safeCat);
+    if (checked) { if (!state.memberOnlyCategories.includes(cat)) state.memberOnlyCategories.push(cat); }
+    else { state.memberOnlyCategories = state.memberOnlyCategories.filter(c => c !== cat); }
+    saveState(); renderAdminCategories(); renderNavLinks();
   }
 
   let dragCatIndex = null;
@@ -1520,7 +1681,57 @@
 
   function deleteCategory(name) {
     state.categories = state.categories.filter(c => c !== name);
+    state.memberOnlyCategories = state.memberOnlyCategories.filter(c => c !== name);
     saveState(); renderAdminCategories();
+  }
+
+  // ── MEMBERS ──────────────────────────────────────────────────────────────────
+
+  function generateInvitePassword() {
+    const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let pw = '';
+    for (let i = 0; i < 10; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('invitePassword').value = pw;
+  }
+
+  function sendMemberInvite() {
+    const email = document.getElementById('inviteEmail').value.trim().toLowerCase();
+    const pw = document.getElementById('invitePassword').value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('⚠️ Enter a valid email'); return; }
+    if (!pw || pw.length < 4) { showToast('⚠️ Password must be at least 4 characters'); return; }
+    if (state.members.some(m => m.email.toLowerCase() === email)) { showToast('⚠️ Already a member — remove them first to reissue'); return; }
+    state.members.push({ id: 'mem' + Date.now() + Math.random().toString(36).slice(2), email, password: pw, invitedAt: Date.now() });
+    saveState(); renderMembersList();
+
+    const subject = `You're invited to ${state.siteTitle}`;
+    const body = `Hi,\n\nYou've been invited to the members-only section of ${state.siteTitle}.\n\nLogin email: ${email}\nPassword: ${pw}\n\nVisit ${state.siteUrl || window.location.origin} and click the 👤 icon to log in.\n\nNote: this won't work until the site admin publishes this update — if it doesn't work yet, try again shortly.\n\nThanks!`;
+    showToast('✅ Member added — drafting invite email. Publish for the login to take effect.');
+    setTimeout(() => {
+      window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }, 400);
+
+    document.getElementById('inviteEmail').value = '';
+    document.getElementById('invitePassword').value = '';
+  }
+
+  function renderMembersList() {
+    const el = document.getElementById('membersList');
+    if (!state.members.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">👥</div><p>No members yet.</p></div>`; return; }
+    el.innerHTML = state.members.map(m => `
+      <div class="a-page-item">
+        <div class="a-page-info">
+          <div class="a-page-title">${escHtml(m.email)}</div>
+          <div class="a-page-meta">Invited ${formatDate(m.invitedAt)}</div>
+        </div>
+        <button class="a-btn a-btn-danger a-btn-sm" onclick="removeMember('${m.id}')">Remove</button>
+      </div>`).join('');
+  }
+
+  function removeMember(id) {
+    if (!confirm('Remove this member? They will no longer be able to log in once this is published.')) return;
+    state.members = state.members.filter(m => m.id !== id);
+    saveState(); renderMembersList();
+    showToast('Member removed');
   }
 
   // ── PUBLISH / SUBMIT ─────────────────────────────────────────────────────────
@@ -1538,12 +1749,14 @@
     const titleChanged = state.siteTitle !== SITE_CONTENT.siteTitle;
     const taglineChanged = state.siteTagline !== SITE_CONTENT.siteTagline;
     const urlChanged = (state.siteUrl || '') !== (SITE_CONTENT.siteUrl || '');
-    const hasChanges = !!(added.length || modified.length || deleted.length || titleChanged || taglineChanged || colorChanged || urlChanged);
-    return { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, hasChanges };
+    const membersChanged = JSON.stringify(state.members) !== JSON.stringify(SITE_CONTENT.members || []);
+    const gatedCatsChanged = JSON.stringify([...state.memberOnlyCategories].sort()) !== JSON.stringify([...(SITE_CONTENT.memberOnlyCategories || [])].sort());
+    const hasChanges = !!(added.length || modified.length || deleted.length || titleChanged || taglineChanged || colorChanged || urlChanged || membersChanged || gatedCatsChanged);
+    return { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, membersChanged, gatedCatsChanged, hasChanges };
   }
 
   function renderPublish() {
-    const { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, hasChanges } = diffAgainstPublished();
+    const { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, membersChanged, gatedCatsChanged, hasChanges } = diffAgainstPublished();
 
     document.getElementById('pubCurrentVer').textContent = `v${SITE_CONTENT.version}`;
     document.getElementById('pubChangeSummary').textContent = hasChanges ? `${added.length} added, ${modified.length} modified, ${deleted.length} removed` : 'No changes since last publish';
@@ -1556,6 +1769,8 @@
       if (taglineChanged) changesHtml += `<div class="change-item">⚙️ Tagline updated</div>`;
       if (urlChanged) changesHtml += `<div class="change-item">🔗 Site URL changed to <b>${escHtml(state.siteUrl || '')}</b></div>`;
       if (colorChanged) changesHtml += `<div class="change-item">🎨 Primary color changed to <b>${escHtml(normalizeHex(state.themeColor || '#667eea'))}</b></div>`;
+      if (membersChanged) changesHtml += `<div class="change-item">👥 Members list changed (${state.members.length} member${state.members.length===1?'':'s'})</div>`;
+      if (gatedCatsChanged) changesHtml += `<div class="change-item">🔒 Members-only categories: ${state.memberOnlyCategories.length ? escHtml(state.memberOnlyCategories.join(', ')) : 'none'}</div>`;
       added.forEach(p => { changesHtml += `<div class="change-item">✅ New page: <b>${escHtml(p.title)}</b> (${p.status})</div>`; });
       modified.forEach(p => { changesHtml += `<div class="change-item">✏️ Updated: <b>${escHtml(p.title)}</b></div>`; });
       deleted.forEach(p => { changesHtml += `<div class="change-item">🗑️ Deleted: <b>${escHtml(p.title)}</b></div>`; });
@@ -1596,7 +1811,7 @@
     try {
       const res = await fetch('./content.json', { cache: 'no-store' });
       if (!res.ok) throw new Error('bad response');
-      const server = await res.json();
+      const server = normalizeSiteContent(await res.json());
       SITE_CONTENT = server;
       try { localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(server)); } catch(e) {}
       state = {...JSON.parse(JSON.stringify(server)), password: state.password, images: state.images, adminEmail: state.adminEmail || ''};
@@ -1624,6 +1839,8 @@
       siteUrl: state.siteUrl || window.location.origin,
       themeColor: normalizeHex(state.themeColor || '#667eea'),
       categories: state.categories,
+      memberOnlyCategories: state.memberOnlyCategories,
+      members: state.members,
       pages: state.pages.map(p => ({...p, featuredImage: p.featuredImage || null}))
     };
     return JSON.stringify(exportData, null, 2);
@@ -1685,7 +1902,7 @@
     const path = location.pathname.replace(/\/[^/]*$/, '/');
     const today = new Date().toISOString().slice(0, 10);
     const urls = [{ loc: base + path, lastmod: today }];
-    state.pages.filter(p => p.status === 'published').forEach(p => {
+    state.pages.filter(p => p.status === 'published' && !isCategoryGated(p.category)).forEach(p => {
       urls.push({ loc: `${base}${path}?page=${encodeURIComponent(p.slug)}`, lastmod: new Date(p.updatedAt).toISOString().slice(0, 10) });
     });
     const body = urls.map(u => `  <url>\n    <loc>${escXml(u.loc)}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n  </url>`).join('\n');
@@ -1873,6 +2090,9 @@
   async function boot() {
     SITE_CONTENT = await loadSiteContent();
     state = loadState();
+    // Defensive defaults for localStorage state saved before these fields existed.
+    if (!Array.isArray(state.members)) state.members = [];
+    if (!Array.isArray(state.memberOnlyCategories)) state.memberOnlyCategories = [];
     initSite();
     applyRouteFromLocation(true);
   }
