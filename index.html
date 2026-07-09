@@ -1108,6 +1108,8 @@
   function parseWxr(xmlText) {
     const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
     if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
+    const channelLink = doc.querySelector('channel > link');
+    const siteHost = channelLink ? normalizeWpUrl(channelLink.textContent).split('/')[0] : '';
     const WP = 'http://wordpress.org/export/1.2/';
     const CONTENT_NS = 'http://purl.org/rss/1.0/modules/content/';
     const wpText = (item, tag) => { const el = item.getElementsByTagNameNS(WP, tag)[0]; return el ? el.textContent : ''; };
@@ -1123,6 +1125,7 @@
       title: (item.getElementsByTagName('title')[0] || {}).textContent || '(untitled)',
       content: contentText(item),
       url: wpText(item, 'attachment_url'),
+      link: (item.getElementsByTagName('link')[0] || {}).textContent || '',
     }));
     const byId = {};
     raw.forEach(it => { byId[it.id] = it; });
@@ -1158,6 +1161,10 @@
         const embedUrl = toEmbedUrl(url);
         return embedUrl ? `<div class="wp-block-embed__wrapper"><iframe width="100%" height="360" src="${embedUrl}" frameborder="0" allowfullscreen></iframe></div>` : m;
       });
+      // wp-admin links (edit/preview shortcuts) are editor-only cruft that
+      // leaked into content — meaningless to any site visitor. Unwrap them
+      // to plain text rather than leave a dead admin link in place.
+      out = out.replace(/<a\s+[^>]*href=["'][^"']*\/wp-admin\/[^"']*["'][^>]*>(.*?)<\/a>/gi, '$1');
       return out.trim();
     }
 
@@ -1168,13 +1175,14 @@
       content: cleanContent(it.content),
       status: it.status === 'publish' ? 'published' : 'draft',
       kind: it.type,
+      link: it.link,
     }));
 
     const images = attachmentItems
       .filter(it => it.url && /\.(jpe?g|png|gif|webp|svg|pdf)$/i.test(it.url))
       .map(it => ({ wpId: it.id, name: it.title || it.url.split('/').pop(), url: it.url, mediaKind: /\.pdf$/i.test(it.url) ? 'pdf' : 'image' }));
 
-    return { pages, images, skipped };
+    return { pages, images, skipped, siteHost };
   }
 
   function renderWxrPreview(parsed) {
@@ -1192,7 +1200,7 @@
         <div class="publish-row"><span class="publish-label">Media references</span><span class="publish-val">${imgCount} images, ${pdfCount} PDFs (linked by URL, not downloaded)</span></div>
         <div class="publish-row"><span class="publish-label">Skipped items</span><span class="publish-val">${parsed.skipped} (nav menus, templates, styles — not content)</span></div>
       </div>
-      <div style="font-size:12px;color:#718096;margin-bottom:16px">Nested WordPress pages are flattened — ancestry is kept as a "Parent › Child" title prefix. All imported items land as local drafts/pages here — nothing publishes automatically.</div>
+      <div style="font-size:12px;color:#718096;margin-bottom:16px">Nested WordPress pages are flattened — ancestry is kept as a "Parent › Child" title prefix. Links between imported pages are rewritten to stay on this site; links to anything not being imported still point at the old WordPress URLs. All imported items land as local drafts/pages here — nothing publishes automatically.</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="a-btn a-btn-primary" onclick="confirmWxrImport()">Import ${newCount} item${newCount === 1 ? '' : 's'}</button>
         <button class="a-btn a-btn-ghost" onclick="cancelWxrImport()">Cancel</button>
@@ -1200,31 +1208,89 @@
     el.style.display = 'block';
   }
 
+  function normalizeWpUrl(url) {
+    return (url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+  }
+
+  function wpUrlLastSegment(url) {
+    const norm = normalizeWpUrl(url).split(/[?#]/)[0];
+    const parts = norm.split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
+
+  // Tries, in order: exact full-URL match, WordPress numeric ID (page_id=N
+  // or p=N, e.g. from preview links), then just the trailing path segment
+  // — WordPress permalinks for nested pages include the parent path, but
+  // links elsewhere in the export sometimes reference an older/flatter URL
+  // for the same page, so an exact match is often too strict.
+  function rewriteInternalLinks(html, linkMap, idMap, slugMap, siteHost) {
+    return html.replace(/(<a\s+[^>]*href=["'])([^"']+)(["'])/gi, (m, pre, href, post) => {
+      let slug = linkMap[normalizeWpUrl(href)];
+      // ID/slug fallback matching is approximate, so only trust it for
+      // links that are actually on the source site (or relative) — never
+      // let it repoint an unrelated external link that happens to share a
+      // path segment or numeric query param with an imported page.
+      const isOwnSite = !/^https?:\/\//i.test(href) || (siteHost && normalizeWpUrl(href).split('/')[0] === siteHost);
+      if (!slug && isOwnSite) {
+        const idMatch = href.match(/[?&](?:page_id|p)=(\d+)/);
+        if (idMatch) slug = idMap[idMatch[1]];
+      }
+      if (!slug && isOwnSite) slug = slugMap[wpUrlLastSegment(href)];
+      return slug ? `${pre}?page=${encodeURIComponent(slug)}${post}` : m;
+    });
+  }
+
   function confirmWxrImport() {
     if (!pendingWxrImport) return;
     const alreadyImported = new Set(state.pages.filter(p => p.importedFrom).map(p => p.importedFrom));
     const now = Date.now();
-    let imported = 0, skipped = 0;
+
+    // Pass 1: resolve each page's final slug (new pages get a freshly
+    // deduped one; already-imported pages keep whatever slug they currently
+    // have) and build lookup maps (full URL, WP post ID, trailing slug) so
+    // internal links between imported pages can be rewritten to stay
+    // on-site instead of pointing back at the old WordPress URLs.
+    const linkMap = {}, idMap = {}, slugMap = {};
+    const toInsert = [];
     pendingWxrImport.pages.forEach((p, i) => {
       const marker = 'wp-' + p.wpId;
-      if (alreadyImported.has(marker)) { skipped++; return; }
+      if (alreadyImported.has(marker)) {
+        const existing = state.pages.find(sp => sp.importedFrom === marker);
+        if (existing) {
+          if (p.link) linkMap[normalizeWpUrl(p.link)] = existing.slug;
+          idMap[p.wpId] = existing.slug;
+          slugMap[existing.slug] = existing.slug;
+        }
+        return;
+      }
       const baseSlug = p.slug || slugify(p.title) || ('page-' + p.wpId);
       let uniqueSlug = baseSlug, n = 2;
-      while (state.pages.some(sp => sp.slug === uniqueSlug)) uniqueSlug = `${baseSlug}-${n++}`;
+      while (state.pages.some(sp => sp.slug === uniqueSlug) || toInsert.some(t => t.slug === uniqueSlug)) uniqueSlug = `${baseSlug}-${n++}`;
+      if (p.link) linkMap[normalizeWpUrl(p.link)] = uniqueSlug;
+      idMap[p.wpId] = uniqueSlug;
+      slugMap[baseSlug] = uniqueSlug;
+      toInsert.push({ wpId: p.wpId, marker, slug: uniqueSlug, title: p.title, content: p.content, status: p.status, i });
+    });
+
+    // Pass 2: insert with internal links resolved now that every imported
+    // page's final slug is known.
+    toInsert.forEach(t => {
       state.pages.push({
-        id: 'wpimport-' + p.wpId + '-' + (now + i),
-        title: p.title,
-        slug: uniqueSlug,
+        id: 'wpimport-' + t.wpId + '-' + (now + t.i),
+        title: t.title,
+        slug: t.slug,
         category: '',
-        content: p.content,
+        content: rewriteInternalLinks(t.content, linkMap, idMap, slugMap, pendingWxrImport.siteHost),
         featuredImage: null,
-        status: p.status,
+        status: t.status,
         createdAt: now,
         updatedAt: now,
-        importedFrom: marker,
+        importedFrom: t.marker,
       });
-      imported++;
     });
+    const imported = toInsert.length;
+    const skipped = pendingWxrImport.pages.length - imported;
+
     const alreadyImages = new Set(state.images.filter(i => i.importedFrom).map(i => i.importedFrom));
     let imagesImported = 0;
     pendingWxrImport.images.forEach(img => {
