@@ -40,6 +40,16 @@
     .mega-panel-item:hover { background: var(--accent); color: #fff; }
     .mega-panel-item.hub { font-weight: 700; color: var(--accent); border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 10px; }
     .mega-panel-item.hub:hover { color: #fff; }
+    /* Categories that end up inside the "More" overflow list still get a
+       flyout submenu — it opens to the LEFT since "More" already sits at
+       the far right edge of the nav bar, so opening rightward would run
+       off-screen. */
+    .nav-more-item-wrap { position: relative; display: flex; align-items: stretch; }
+    .nav-more-item-wrap .nav-more-item { flex: 1; }
+    .nav-more-item-wrap:hover .mega-panel { display: flex; }
+    .nav-more-caret { background: none; border: none; color: var(--text-soft); opacity: .55; cursor: pointer; padding: 0 10px; font-size: 10px; border-radius: 6px; }
+    .nav-more-caret:hover { opacity: 1; background: var(--bg); }
+    .mega-panel-flyout { top: 0; left: auto; right: 100%; margin-right: 6px; }
     .nav-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
     .ver-btn { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 20px; background: var(--bg); border: 1.5px solid var(--border); color: var(--text-soft); cursor: pointer; transition: all .15s; }
     .ver-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -736,29 +746,45 @@
 
   // Categories with 2+ pages get a hover/tap "mega menu" dropdown listing
   // their pages directly, so visitors can jump straight to one without
-  // detouring through the category grid. Kept off the "More" overflow menu
-  // to avoid nested flyouts in an already-cramped dropdown.
+  // detouring through the category grid.
   function navItemHtml(it) {
     if (it.kind !== 'category' || !it.pages) return navLinkBtnHtml(it);
     return `<div class="nav-item-wrap">
       ${navLinkBtnHtml(it)}
       <button class="nav-caret" onclick="toggleMegaPanel(event, this)" aria-label="Show ${escHtml(it.cat)} pages">▾</button>
-      <div class="mega-panel">
-        ${it.pages.map(p => `<button class="mega-panel-item${p.title === it.cat ? ' hub' : ''}" onclick="showPage('${p.id}')">${escHtml(p.title === it.cat ? 'Overview' : p.title)}</button>`).join('')}
-      </div>
+      <div class="mega-panel">${megaPanelItemsHtml(it)}</div>
+    </div>`;
+  }
+
+  function megaPanelItemsHtml(it) {
+    return it.pages.map(p => `<button class="mega-panel-item${p.title === it.cat ? ' hub' : ''}" onclick="closeNavMore(); showPage('${p.id}')">${escHtml(p.title === it.cat ? 'Overview' : p.title)}</button>`).join('');
+  }
+
+  // When a category overflows into "More" it still needs its sub-pages
+  // reachable — otherwise most real sites (where nearly everything
+  // overflows) would never show a mega menu at all. The flyout opens
+  // leftward (see .mega-panel-flyout) since "More" already sits at the
+  // nav bar's right edge.
+  function navMoreItemHtml(it) {
+    const link = `<button class="nav-more-item${it.active ? ' active' : ''}" onclick="closeNavMore(); ${navLinkOnclick(it)}">${escHtml(it.label)}</button>`;
+    if (it.kind !== 'category' || !it.pages) return link;
+    return `<div class="nav-more-item-wrap">
+      ${link}
+      <button class="nav-more-caret" onclick="toggleMegaPanel(event, this)" aria-label="Show ${escHtml(it.cat)} pages">‹</button>
+      <div class="mega-panel mega-panel-flyout">${megaPanelItemsHtml(it)}</div>
     </div>`;
   }
 
   function toggleMegaPanel(e, caretEl) {
     e.stopPropagation();
-    const panel = caretEl.closest('.nav-item-wrap').querySelector('.mega-panel');
+    const panel = caretEl.closest('.nav-item-wrap, .nav-more-item-wrap').querySelector('.mega-panel');
     const wasOpen = panel.classList.contains('open');
     document.querySelectorAll('.mega-panel.open').forEach(p => p.classList.remove('open'));
     if (!wasOpen) panel.classList.add('open');
   }
 
   document.addEventListener('click', e => {
-    if (!e.target.closest('.nav-item-wrap')) {
+    if (!e.target.closest('.nav-item-wrap, .nav-more-item-wrap')) {
       document.querySelectorAll('.mega-panel.open').forEach(p => p.classList.remove('open'));
     }
   });
@@ -788,7 +814,7 @@
 
     container.innerHTML = visible.map(navItemHtml).join('');
     document.getElementById('navMoreBtn').classList.toggle('active', overflow.some(o => o.active));
-    document.getElementById('navMoreMenu').innerHTML = overflow.map(it => `<button class="nav-more-item${it.active ? ' active' : ''}" onclick="closeNavMore(); ${navLinkOnclick(it)}">${escHtml(it.label)}</button>`).join('');
+    document.getElementById('navMoreMenu').innerHTML = overflow.map(navMoreItemHtml).join('');
     document.getElementById('navMoreWrap').style.display = '';
   }
 
@@ -800,6 +826,7 @@
   function closeNavMore() {
     const m = document.getElementById('navMoreMenu');
     if (m) m.classList.remove('open');
+    document.querySelectorAll('.mega-panel.open').forEach(p => p.classList.remove('open'));
   }
 
   document.addEventListener('click', e => {
