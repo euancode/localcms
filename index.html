@@ -31,6 +31,15 @@
     .nav-more-menu.open { display: flex; }
     .nav-more-item { background: none; border: none; text-align: left; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--text-soft); cursor: pointer; white-space: nowrap; }
     .nav-more-item:hover, .nav-more-item.active { background: var(--accent); color: #fff; }
+    .nav-item-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
+    .nav-caret { background: none; border: none; color: var(--text-soft); opacity: .55; cursor: pointer; padding: 4px 6px 4px 0; font-size: 10px; line-height: 1; }
+    .nav-caret:hover { opacity: 1; }
+    .mega-panel { display: none; position: absolute; top: calc(100% + 8px); left: 0; min-width: 220px; max-width: 320px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 6px; flex-direction: column; gap: 1px; z-index: 500; }
+    .nav-item-wrap:hover .mega-panel, .mega-panel.open { display: flex; }
+    .mega-panel-item { text-align: left; background: none; border: none; color: var(--text-soft); font-size: 13px; padding: 8px 10px; border-radius: 6px; cursor: pointer; white-space: normal; line-height: 1.35; }
+    .mega-panel-item:hover { background: var(--accent); color: #fff; }
+    .mega-panel-item.hub { font-weight: 700; color: var(--accent); border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 10px; }
+    .mega-panel-item.hub:hover { color: #fff; }
     .nav-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
     .ver-btn { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 20px; background: var(--bg); border: 1.5px solid var(--border); color: var(--text-soft); cursor: pointer; transition: all .15s; }
     .ver-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -696,9 +705,11 @@
     const items = [{ kind: 'home', label: 'Home', active: currentView === 'home' }];
     state.categories.forEach(cat => {
       if (isCategoryLocked(cat)) return; // members-only categories are hidden entirely when logged out
-      if (state.pages.some(p => p.category === cat && p.status === 'published')) {
-        items.push({ kind: 'category', label: cat, cat, active: currentView === 'category' && currentCat === cat });
-      }
+      const pages = pagesInCategory(cat);
+      if (!pages.length) return;
+      // A single-page category links straight to its one page (see
+      // showCategory) so there's nothing to show in a dropdown for it.
+      items.push({ kind: 'category', label: cat, cat, active: currentView === 'category' && currentCat === cat, pages: pages.length > 1 ? pages : null });
     });
     // Standalone pages flagged "show in main nav" render after categories —
     // simple additive ordering rather than a fully reorderable unified list.
@@ -708,7 +719,7 @@
       }
     });
     const container = document.getElementById('navLinks');
-    container.innerHTML = items.map(navLinkBtnHtml).join('');
+    container.innerHTML = items.map(navItemHtml).join('');
     document.getElementById('navMoreWrap').style.display = 'none';
     requestAnimationFrame(() => layoutNavOverflow(items));
   }
@@ -722,6 +733,35 @@
   function navLinkBtnHtml(it) {
     return `<button class="nav-link${it.active ? ' active' : ''}" onclick="${navLinkOnclick(it)}">${escHtml(it.label)}</button>`;
   }
+
+  // Categories with 2+ pages get a hover/tap "mega menu" dropdown listing
+  // their pages directly, so visitors can jump straight to one without
+  // detouring through the category grid. Kept off the "More" overflow menu
+  // to avoid nested flyouts in an already-cramped dropdown.
+  function navItemHtml(it) {
+    if (it.kind !== 'category' || !it.pages) return navLinkBtnHtml(it);
+    return `<div class="nav-item-wrap">
+      ${navLinkBtnHtml(it)}
+      <button class="nav-caret" onclick="toggleMegaPanel(event, this)" aria-label="Show ${escHtml(it.cat)} pages">▾</button>
+      <div class="mega-panel">
+        ${it.pages.map(p => `<button class="mega-panel-item${p.title === it.cat ? ' hub' : ''}" onclick="showPage('${p.id}')">${escHtml(p.title === it.cat ? 'Overview' : p.title)}</button>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  function toggleMegaPanel(e, caretEl) {
+    e.stopPropagation();
+    const panel = caretEl.closest('.nav-item-wrap').querySelector('.mega-panel');
+    const wasOpen = panel.classList.contains('open');
+    document.querySelectorAll('.mega-panel.open').forEach(p => p.classList.remove('open'));
+    if (!wasOpen) panel.classList.add('open');
+  }
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.nav-item-wrap')) {
+      document.querySelectorAll('.mega-panel.open').forEach(p => p.classList.remove('open'));
+    }
+  });
 
   // If the rendered links overflow the available nav width, collapse the
   // tail into a "More" dropdown instead of relying on hidden horizontal
@@ -746,7 +786,7 @@
     const overflow = items.slice(visible.length);
     if (!overflow.length) return;
 
-    container.innerHTML = visible.map(navLinkBtnHtml).join('');
+    container.innerHTML = visible.map(navItemHtml).join('');
     document.getElementById('navMoreBtn').classList.toggle('active', overflow.some(o => o.active));
     document.getElementById('navMoreMenu').innerHTML = overflow.map(it => `<button class="nav-more-item${it.active ? ' active' : ''}" onclick="closeNavMore(); ${navLinkOnclick(it)}">${escHtml(it.label)}</button>`).join('');
     document.getElementById('navMoreWrap').style.display = '';
@@ -817,21 +857,28 @@
     grid.innerHTML = pub.length ? pub.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">✍️</div><p>No published pages yet.</p></div>`;
   }
 
+  // A page that shares its exact title with the category (a "hub" page that
+  // itself has children — see breadcrumbTitleAndCategory) reads as the
+  // category's landing page, so it's pinned first.
+  function pagesInCategory(cat) {
+    return state.pages
+      .filter(p => p.category === cat && p.status === 'published')
+      .sort((a, b) => (b.title === cat ? 1 : 0) - (a.title === cat ? 1 : 0));
+  }
+
   function showCategory(cat, opts) {
     if (isCategoryLocked(cat)) {
       activateView('locked');
       if (!opts || opts.push !== false) navigateUrl(location.pathname + '?category=' + encodeURIComponent(cat), opts && opts.replace);
       return;
     }
+    const pages = pagesInCategory(cat);
+    // A single-page category has nothing to browse — skip the grid and go
+    // straight to the page.
+    if (pages.length === 1) { showPage(pages[0].id, opts); return; }
     prevView = currentView; prevCat = currentCat;
     currentCat = cat;
     document.getElementById('catLabel').textContent = cat;
-    // A page that shares its exact title with the category (a "hub" page
-    // that itself has children — see breadcrumbTitleAndCategory) reads as
-    // the category's landing page, so it's pinned first.
-    const pages = state.pages
-      .filter(p => p.category === cat && p.status === 'published')
-      .sort((a, b) => (b.title === cat ? 1 : 0) - (a.title === cat ? 1 : 0));
     document.getElementById('catGrid').innerHTML = pages.length ? pages.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">📭</div><p>No pages in "${cat}" yet.</p></div>`;
     activateView('category');
     if (!opts || opts.push !== false) navigateUrl(location.pathname + '?category=' + encodeURIComponent(cat), opts && opts.replace);
