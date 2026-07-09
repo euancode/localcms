@@ -222,6 +222,10 @@
   <div class="nav-inner">
     <span class="nav-brand" id="navBrand" onclick="showView('home')">LocalCMS</span>
     <div class="nav-links" id="navLinks"></div>
+    <div class="nav-more-wrap" id="navMoreWrap" style="display:none">
+      <button class="nav-link nav-more-btn" id="navMoreBtn" onclick="toggleNavMore(event)">More ▾</button>
+      <div class="nav-more-menu" id="navMoreMenu"></div>
+    </div>
     <div class="nav-right">
       <div class="nav-search-wrap">
         <button class="nav-search-btn" onclick="toggleSearch()" title="Search" aria-label="Search">🔍</button>
@@ -619,6 +623,7 @@
     });
     const container = document.getElementById('navLinks');
     container.innerHTML = items.map(navLinkBtnHtml).join('');
+    document.getElementById('navMoreWrap').style.display = 'none';
     requestAnimationFrame(() => layoutNavOverflow(items));
   }
 
@@ -629,13 +634,16 @@
 
   // If the rendered links overflow the available nav width, collapse the
   // tail into a "More" dropdown instead of relying on hidden horizontal
-  // scroll (which isn't discoverable, especially with a mouse).
+  // scroll (which isn't discoverable, especially with a mouse). The
+  // dropdown lives as a sibling of #navLinks (not inside it) since
+  // #navLinks has overflow:hidden, which would otherwise clip the dropdown
+  // itself along with the links it's meant to reveal.
   function layoutNavOverflow(items) {
     const container = document.getElementById('navLinks');
     const buttons = Array.from(container.children);
     if (!buttons.length) return;
     const containerRight = container.getBoundingClientRect().right;
-    const MORE_WIDTH = 64;
+    const MORE_WIDTH = 76;
     let overflowStart = -1;
     for (let i = 0; i < buttons.length; i++) {
       const budget = containerRight - (i < buttons.length - 1 ? MORE_WIDTH : 0);
@@ -647,13 +655,10 @@
     const overflow = items.slice(visible.length);
     if (!overflow.length) return;
 
-    container.innerHTML = visible.map(navLinkBtnHtml).join('') +
-      `<div class="nav-more-wrap">
-        <button class="nav-link nav-more-btn${overflow.some(o => o.active) ? ' active' : ''}" onclick="toggleNavMore(event)">More ▾</button>
-        <div class="nav-more-menu" id="navMoreMenu">
-          ${overflow.map(it => `<button class="nav-more-item${it.active ? ' active' : ''}" onclick="closeNavMore(); ${it.cat === null ? `showView('home')` : `showCategory('${escHtml(it.cat)}')`}">${escHtml(it.label)}</button>`).join('')}
-        </div>
-      </div>`;
+    container.innerHTML = visible.map(navLinkBtnHtml).join('');
+    document.getElementById('navMoreBtn').classList.toggle('active', overflow.some(o => o.active));
+    document.getElementById('navMoreMenu').innerHTML = overflow.map(it => `<button class="nav-more-item${it.active ? ' active' : ''}" onclick="closeNavMore(); ${it.cat === null ? `showView('home')` : `showCategory('${escHtml(it.cat)}')`}">${escHtml(it.label)}</button>`).join('');
+    document.getElementById('navMoreWrap').style.display = '';
   }
 
   function toggleNavMore(e) {
