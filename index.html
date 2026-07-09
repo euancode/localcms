@@ -190,6 +190,7 @@
     .media-thumb-del { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.7); border: none; color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; cursor: pointer; display: none; align-items: center; justify-content: center; }
     .media-thumb:hover .media-thumb-del { display: flex; }
     .media-thumb-name { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.7); color: #fff; font-size: 10px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .media-ext-badge { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,.7); color: #fff; font-size: 10px; padding: 2px 5px; border-radius: 10px; line-height: 1.4; }
     .cat-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #161b27; border: 1px solid #2a3344; border-radius: 8px; margin-bottom: 8px; }
     .cat-name { flex: 1; font-size: 14px; font-weight: 600; }
     .cat-count { font-size: 12px; color: #718096; }
@@ -305,6 +306,9 @@
       <button class="a-nav-item" id="anav-media" onclick="showAdminSection('media')">
         <span class="a-nav-icon">🖼️</span><span class="a-nav-lbl">Media</span>
       </button>
+      <button class="a-nav-item" id="anav-import" onclick="showAdminSection('import')">
+        <span class="a-nav-icon">📥</span><span class="a-nav-lbl">Import</span>
+      </button>
       <div class="a-nav-section">Publish</div>
       <button class="a-nav-item" id="anav-publish" onclick="showAdminSection('publish')">
         <span class="a-nav-icon">📤</span><span class="a-nav-lbl">Submit</span>
@@ -409,13 +413,27 @@
       <div class="a-section" id="a-media">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
           <h2 class="a-heading" style="margin:0">Media Library</h2>
-          <label class="a-btn a-btn-primary" style="cursor:pointer">
-            ↑ Upload
-            <input type="file" accept="image/*" multiple style="display:none" onchange="uploadImages(this)">
-          </label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label class="a-btn a-btn-primary" style="cursor:pointer">
+              ↑ Upload
+              <input type="file" accept="image/*" multiple style="display:none" onchange="uploadImages(this)">
+            </label>
+            <button class="a-btn a-btn-ghost" onclick="addImageByUrl()">🔗 Add by URL</button>
+          </div>
         </div>
-        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images are stored in your browser. Keep them under a few MB each to avoid filling localStorage.</div>
+        <div style="font-size:12px;color:#718096;margin-bottom:12px">Uploaded images are stored in your browser — keep them under a few MB each to avoid filling localStorage. Images added by URL (🔗) stay linked to wherever they're hosted instead, so there's no size limit on those.</div>
         <div class="media-grid" id="adminMediaGrid"></div>
+      </div>
+
+      <!-- IMPORT -->
+      <div class="a-section" id="a-import">
+        <h2 class="a-heading">Import from WordPress</h2>
+        <p style="font-size:13px;color:#a0aec0;margin-bottom:20px;line-height:1.6">Upload a WordPress export file (Tools → Export → All content, in wp-admin) to bring its pages and posts in as local drafts/pages here. Nothing is published automatically — review and use Submit for Publish as normal once you're happy. Images stay linked to their original URLs rather than being downloaded.</p>
+        <div class="a-form-group">
+          <label class="a-form-label">WordPress export file (.xml)</label>
+          <input type="file" accept=".xml,text/xml" class="a-input" id="wxrFileInput" onchange="handleWxrFileSelect(this)">
+        </div>
+        <div id="wxrPreview" style="display:none"></div>
       </div>
 
       <!-- PUBLISH / SUBMIT -->
@@ -1020,12 +1038,23 @@
     input.value = '';
   }
 
+  function addImageByUrl() {
+    const url = (prompt('Image URL:') || '').trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) { showToast('⚠️ Enter a full URL starting with http:// or https://'); return; }
+    const name = decodeURIComponent(url.split('/').pop().split('?')[0]) || 'image';
+    state.images.push({ id: 'img'+Date.now()+Math.random().toString(36).slice(2), name, data: url, external: true });
+    saveState(); renderAdminMedia();
+    showToast('✅ Image linked');
+  }
+
   function renderAdminMedia() {
     const grid = document.getElementById('adminMediaGrid');
     if (!state.images.length) { grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🖼️</div><p>No images yet.</p></div>`; return; }
     grid.innerHTML = state.images.map(img => `
       <div class="media-thumb">
         <img src="${img.data}" alt="${escHtml(img.name)}" loading="lazy">
+        ${img.external ? `<span class="media-ext-badge" title="Linked by URL, not stored in your browser">🔗</span>` : ''}
         <div class="media-thumb-name">${escHtml(img.name)}</div>
         <button class="media-thumb-del" onclick="deleteImage('${img.id}',event)">✕</button>
       </div>`).join('');
@@ -1036,6 +1065,166 @@
     if (!confirm('Delete this image?')) return;
     state.images = state.images.filter(i => i.id !== id);
     saveState(); renderAdminMedia(); showToast('Image deleted');
+  }
+
+  // ── WORDPRESS IMPORT ─────────────────────────────────────────────────────────
+
+  let pendingWxrImport = null;
+
+  function handleWxrFileSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        pendingWxrImport = parseWxr(e.target.result);
+        renderWxrPreview(pendingWxrImport);
+      } catch (err) {
+        showToast('⚠️ Could not read that file — is it a WordPress export XML?');
+      }
+    };
+    reader.readAsText(file);
+    input.value = '';
+  }
+
+  function parseWxr(xmlText) {
+    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
+    const WP = 'http://wordpress.org/export/1.2/';
+    const CONTENT_NS = 'http://purl.org/rss/1.0/modules/content/';
+    const wpText = (item, tag) => { const el = item.getElementsByTagNameNS(WP, tag)[0]; return el ? el.textContent : ''; };
+    const contentText = item => { const el = item.getElementsByTagNameNS(CONTENT_NS, 'encoded')[0]; return el ? el.textContent : ''; };
+
+    const items = Array.from(doc.getElementsByTagName('item'));
+    const raw = items.map(item => ({
+      id: wpText(item, 'post_id'),
+      type: wpText(item, 'post_type'),
+      status: wpText(item, 'status'),
+      parent: wpText(item, 'post_parent'),
+      name: wpText(item, 'post_name'),
+      title: (item.getElementsByTagName('title')[0] || {}).textContent || '(untitled)',
+      content: contentText(item),
+      url: wpText(item, 'attachment_url'),
+    }));
+    const byId = {};
+    raw.forEach(it => { byId[it.id] = it; });
+
+    const contentItems = raw.filter(it => it.type === 'page' || it.type === 'post');
+    const attachmentItems = raw.filter(it => it.type === 'attachment');
+    const skipped = raw.length - contentItems.length - attachmentItems.length;
+
+    function breadcrumbTitle(it) {
+      const chain = [it.title];
+      let cur = it, guard = 0;
+      while (cur.parent && cur.parent !== '0' && byId[cur.parent] && guard++ < 10) {
+        cur = byId[cur.parent];
+        chain.unshift(cur.title);
+      }
+      // Drop the outermost ancestor (effectively the site root) — keeps the
+      // breadcrumb shorter while still showing real nesting below it.
+      if (chain.length > 1) chain.shift();
+      return chain.join(' › ');
+    }
+
+    function toEmbedUrl(url) {
+      let m = url.match(/youtube\.com\/watch\?v=([\w-]+)/) || url.match(/youtu\.be\/([\w-]+)/);
+      if (m) return `https://www.youtube.com/embed/${m[1]}`;
+      m = url.match(/vimeo\.com\/(\d+)/);
+      if (m) return `https://player.vimeo.com/video/${m[1]}`;
+      return null;
+    }
+
+    function cleanContent(html) {
+      let out = (html || '').replace(/<!--\s*\/?wp:[\s\S]*?-->/g, '');
+      out = out.replace(/<div class="wp-block-embed__wrapper">\s*(https?:\/\/[^\s<]+)\s*<\/div>/g, (m, url) => {
+        const embedUrl = toEmbedUrl(url);
+        return embedUrl ? `<div class="wp-block-embed__wrapper"><iframe width="100%" height="360" src="${embedUrl}" frameborder="0" allowfullscreen></iframe></div>` : m;
+      });
+      return out.trim();
+    }
+
+    const pages = contentItems.map(it => ({
+      wpId: it.id,
+      title: breadcrumbTitle(it),
+      slug: it.name || slugify(it.title),
+      content: cleanContent(it.content),
+      status: it.status === 'publish' ? 'published' : 'draft',
+      kind: it.type,
+    }));
+
+    const images = attachmentItems
+      .filter(it => it.url && /\.(jpe?g|png|gif|webp|svg)$/i.test(it.url))
+      .map(it => ({ wpId: it.id, name: it.title || it.url.split('/').pop(), url: it.url }));
+
+    return { pages, images, skipped };
+  }
+
+  function renderWxrPreview(parsed) {
+    const el = document.getElementById('wxrPreview');
+    const pubCount = parsed.pages.filter(p => p.status === 'published').length;
+    const draftCount = parsed.pages.length - pubCount;
+    const alreadyImported = new Set(state.pages.filter(p => p.importedFrom).map(p => p.importedFrom));
+    const newCount = parsed.pages.filter(p => !alreadyImported.has('wp-' + p.wpId)).length;
+    el.innerHTML = `
+      <div class="publish-info">
+        <div class="publish-row"><span class="publish-label">Pages &amp; posts found</span><span class="publish-val">${parsed.pages.length} (${pubCount} published, ${draftCount} draft)</span></div>
+        <div class="publish-row"><span class="publish-label">New to import</span><span class="publish-val">${newCount}${newCount !== parsed.pages.length ? ` (${parsed.pages.length - newCount} already imported previously — will be skipped)` : ''}</span></div>
+        <div class="publish-row"><span class="publish-label">Media references</span><span class="publish-val">${parsed.images.length} (linked by URL, not downloaded)</span></div>
+        <div class="publish-row"><span class="publish-label">Skipped items</span><span class="publish-val">${parsed.skipped} (nav menus, templates, styles — not content)</span></div>
+      </div>
+      <div style="font-size:12px;color:#718096;margin-bottom:16px">Nested WordPress pages are flattened — ancestry is kept as a "Parent › Child" title prefix. All imported items land as local drafts/pages here — nothing publishes automatically.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="a-btn a-btn-primary" onclick="confirmWxrImport()">Import ${newCount} item${newCount === 1 ? '' : 's'}</button>
+        <button class="a-btn a-btn-ghost" onclick="cancelWxrImport()">Cancel</button>
+      </div>`;
+    el.style.display = 'block';
+  }
+
+  function confirmWxrImport() {
+    if (!pendingWxrImport) return;
+    const alreadyImported = new Set(state.pages.filter(p => p.importedFrom).map(p => p.importedFrom));
+    const now = Date.now();
+    let imported = 0, skipped = 0;
+    pendingWxrImport.pages.forEach((p, i) => {
+      const marker = 'wp-' + p.wpId;
+      if (alreadyImported.has(marker)) { skipped++; return; }
+      const baseSlug = p.slug || slugify(p.title) || ('page-' + p.wpId);
+      let uniqueSlug = baseSlug, n = 2;
+      while (state.pages.some(sp => sp.slug === uniqueSlug)) uniqueSlug = `${baseSlug}-${n++}`;
+      state.pages.push({
+        id: 'wpimport-' + p.wpId + '-' + (now + i),
+        title: p.title,
+        slug: uniqueSlug,
+        category: '',
+        content: p.content,
+        featuredImage: null,
+        status: p.status,
+        createdAt: now,
+        updatedAt: now,
+        importedFrom: marker,
+      });
+      imported++;
+    });
+    const alreadyImages = new Set(state.images.filter(i => i.importedFrom).map(i => i.importedFrom));
+    let imagesImported = 0;
+    pendingWxrImport.images.forEach(img => {
+      const marker = 'wp-' + img.wpId;
+      if (alreadyImages.has(marker)) return;
+      state.images.push({ id: 'img-' + marker, name: img.name, data: img.url, external: true, importedFrom: marker });
+      imagesImported++;
+    });
+    saveState();
+    renderAdminPages();
+    showToast(`✅ Imported ${imported} page${imported === 1 ? '' : 's'}${skipped ? `, skipped ${skipped} already imported` : ''}${imagesImported ? ` · ${imagesImported} media links added` : ''}`);
+    cancelWxrImport();
+    showAdminSection('pages');
+  }
+
+  function cancelWxrImport() {
+    pendingWxrImport = null;
+    const el = document.getElementById('wxrPreview');
+    el.style.display = 'none';
+    el.innerHTML = '';
   }
 
   function openMediaPicker(cb) {
