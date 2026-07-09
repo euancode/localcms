@@ -162,6 +162,12 @@
     .a-status-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; }
     .a-status-badge.pub { background: #1c4532; color: #68d391; } .a-status-badge.draft { background: #2d3748; color: #a0aec0; }
     .a-cat-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; background: #667eea22; color: #667eea; white-space: nowrap; }
+    .filter-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .filter-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; color: #a0aec0; background: #161b27; border: 1.5px solid #2a3344; cursor: pointer; transition: all .15s; }
+    .filter-chip:hover { border-color: #667eea; color: #fff; }
+    .filter-chip.active { background: #667eea; border-color: #667eea; color: #fff; }
+    .filter-chip-count { background: rgba(255,255,255,.12); padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .filter-chip.active .filter-chip-count { background: rgba(255,255,255,.25); }
     .a-form-group { margin-bottom: 16px; }
     .a-form-label { display: block; font-size: 11px; font-weight: 800; color: #a0aec0; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
     .a-input { width: 100%; padding: 10px 12px; background: #161b27; border: 1.5px solid #2a3344; border-radius: 8px; color: #e2e8f0; font-size: 14px; outline: none; transition: border-color .15s; font-family: inherit; }
@@ -336,10 +342,12 @@
 
       <!-- PAGES LIST -->
       <div class="a-section active" id="a-pages">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
           <h2 class="a-heading" style="margin:0">Pages</h2>
           <button class="a-btn a-btn-primary" onclick="newPage()">+ New Page</button>
         </div>
+        <div class="filter-row" id="pageStatusFilters"></div>
+        <div class="filter-row" id="pageCategoryFilters" style="margin-bottom:20px"></div>
         <div id="adminPagesList"></div>
       </div>
 
@@ -894,17 +902,57 @@
 
   // ── PAGES ────────────────────────────────────────────────────────────────────
 
+  let pageStatusFilter = 'all';
+  let pageCategoryFilter = 'all';
+
+  function pageMatchesFilters(p) {
+    const statusOk = pageStatusFilter === 'all' || p.status === pageStatusFilter;
+    const catOk = pageCategoryFilter === 'all' || (pageCategoryFilter === '__none__' ? !p.category : p.category === pageCategoryFilter);
+    return statusOk && catOk;
+  }
+
+  function setPageStatusFilter(v) { pageStatusFilter = v; renderAdminPages(); }
+  function setPageCategoryFilter(v) { pageCategoryFilter = decodeURIComponent(v); renderAdminPages(); }
+
+  function filterChipHtml(key, label, count, active, onclickFn) {
+    // encodeURIComponent leaves ' unescaped, which would break out of the
+    // single-quoted onclick argument below — escape it manually too.
+    const safeKey = encodeURIComponent(key).replace(/'/g, '%27');
+    return `<button class="filter-chip${active ? ' active' : ''}" onclick="${onclickFn}('${safeKey}')">${escHtml(label)} <span class="filter-chip-count">${count}</span></button>`;
+  }
+
+  function renderPageFilters() {
+    const pubCount = state.pages.filter(p => p.status === 'published').length;
+    const draftCount = state.pages.filter(p => p.status === 'draft').length;
+    document.getElementById('pageStatusFilters').innerHTML = [
+      filterChipHtml('all', 'All', state.pages.length, pageStatusFilter === 'all', 'setPageStatusFilter'),
+      filterChipHtml('published', 'Published', pubCount, pageStatusFilter === 'published', 'setPageStatusFilter'),
+      filterChipHtml('draft', 'Draft', draftCount, pageStatusFilter === 'draft', 'setPageStatusFilter'),
+    ].join('');
+
+    const noneCount = state.pages.filter(p => !p.category).length;
+    let catChips = filterChipHtml('all', 'All categories', state.pages.length, pageCategoryFilter === 'all', 'setPageCategoryFilter');
+    catChips += state.categories.map(cat => filterChipHtml(cat, cat, state.pages.filter(p => p.category === cat).length, pageCategoryFilter === cat, 'setPageCategoryFilter')).join('');
+    if (noneCount) catChips += filterChipHtml('__none__', 'Uncategorised', noneCount, pageCategoryFilter === '__none__', 'setPageCategoryFilter');
+    document.getElementById('pageCategoryFilters').innerHTML = catChips;
+  }
+
   function renderAdminPages() {
+    renderPageFilters();
     const list = document.getElementById('adminPagesList');
     if (!state.pages.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">📄</div><p>No pages yet.</p></div>`; return; }
-    list.innerHTML = state.pages.map((p, i) => {
+    const filtering = pageStatusFilter !== 'all' || pageCategoryFilter !== 'all';
+    const visible = state.pages.map((p, i) => ({ p, i })).filter(({ p }) => pageMatchesFilters(p));
+    if (!visible.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><p>No pages match this filter.</p></div>`; return; }
+    list.innerHTML = visible.map(({ p, i }) => {
       const d = new Date(p.updatedAt).toLocaleDateString(undefined, {month:'short',day:'numeric',year:'numeric'});
-      return `<div class="a-page-item" draggable="true"
+      const dragAttrs = filtering ? '' : `draggable="true"
         ondragstart="pageDragStart(event, ${i})"
         ondragover="event.preventDefault(); this.classList.add('drag-over')"
         ondragleave="this.classList.remove('drag-over')"
-        ondrop="this.classList.remove('drag-over'); pageDrop(event, ${i})">
-        <span class="drag-handle" title="Drag to reorder">⠿</span>
+        ondrop="this.classList.remove('drag-over'); pageDrop(event, ${i})"`;
+      return `<div class="a-page-item" ${dragAttrs}>
+        <span class="drag-handle" title="${filtering ? 'Clear filters to reorder' : 'Drag to reorder'}" style="${filtering ? 'opacity:.3' : ''}">⠿</span>
         <div class="a-page-info">
           <div class="a-page-title">${escHtml(p.title)}</div>
           <div class="a-page-meta">${d}</div>
@@ -912,8 +960,8 @@
         ${p.category ? `<span class="a-cat-badge">${escHtml(p.category)}</span>` : ''}
         <span class="a-status-badge ${p.status==='published'?'pub':'draft'}">${p.status}</span>
         <div class="reorder-btns">
-          <button class="a-btn a-btn-ghost a-btn-sm" onclick="movePage(${i}, -1)" ${i===0?'disabled':''} title="Move up">▲</button>
-          <button class="a-btn a-btn-ghost a-btn-sm" onclick="movePage(${i}, 1)" ${i===state.pages.length-1?'disabled':''} title="Move down">▼</button>
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="movePage(${i}, -1)" ${filtering || i===0?'disabled':''} title="Move up">▲</button>
+          <button class="a-btn a-btn-ghost a-btn-sm" onclick="movePage(${i}, 1)" ${filtering || i===state.pages.length-1?'disabled':''} title="Move down">▼</button>
         </div>
         <button class="a-btn a-btn-ghost a-btn-sm" onclick="editPage('${p.id}')">Edit</button>
       </div>`;
