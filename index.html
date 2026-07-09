@@ -1229,19 +1229,31 @@
     const attachmentItems = raw.filter(it => it.type === 'attachment');
     const skipped = raw.length - contentItems.length - attachmentItems.length;
 
+    // Identify the site's actual homepage by matching its <link> against the
+    // channel's own base URL — only that page should ever be dropped from a
+    // breadcrumb chain. Most top-level pages are NOT the homepage; they're
+    // independent sections in their own right (e.g. "The Battle of the
+    // Scheldt 1944" with its own sub-pages), and each of those should become
+    // a real category rather than being mistaken for "the root" and dropped.
+    const siteRootNorm = normalizeWpUrl(channelLink ? channelLink.textContent : '');
+    const rootPage = contentItems.find(it => it.link && normalizeWpUrl(it.link) === siteRootNorm);
+    const rootId = rootPage ? rootPage.id : null;
+
     // WordPress pages here don't really use categories (only "Uncategorized"
     // exists) — the real organizing structure is page hierarchy. So: the
-    // outermost ancestor (site root) is dropped, the next level up becomes
-    // the page's category (auto-created if new), and any remaining nesting
-    // stays as a "Parent › Child" title prefix.
+    // homepage (if identified) is dropped from the chain, the next level up
+    // becomes the page's category (auto-created if new), and any remaining
+    // nesting stays as a "Parent › Child" title prefix.
     function breadcrumbTitleAndCategory(it) {
       const chain = [it.title];
+      const idChain = [it.id];
       let cur = it, guard = 0;
       while (cur.parent && cur.parent !== '0' && byId[cur.parent] && guard++ < 10) {
         cur = byId[cur.parent];
         chain.unshift(cur.title);
+        idChain.unshift(cur.id);
       }
-      if (chain.length > 1) chain.shift();
+      if (chain.length > 1 && idChain[0] === rootId) chain.shift();
       if (chain.length > 1) return { title: chain.slice(1).join(' › '), category: chain[0] };
       return { title: chain[0], category: '' };
     }
