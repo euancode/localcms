@@ -279,6 +279,11 @@
     .media-thumb-name { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.7); color: #fff; font-size: 10px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .media-ext-badge { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,.7); color: #fff; font-size: 10px; padding: 2px 5px; border-radius: 10px; line-height: 1.4; }
     .cat-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #161b27; border: 1px solid #2a3344; border-radius: 8px; margin-bottom: 8px; }
+    .cat-item.gated { border-color: #7a3a3a; background: #241a1a; }
+    .cat-gate-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1.5px solid #2a3344; background: #1e2535; color: #a0aec0; white-space: nowrap; transition: all .15s; }
+    .cat-gate-toggle:hover { border-color: #667eea; }
+    .cat-gate-toggle.gated { background: #4a2a2a; border-color: #7a3a3a; color: #f0b8b8; }
+    .cat-gate-toggle.gated:hover { border-color: #e2a0a0; }
     .cat-name { flex: 1; font-size: 14px; font-weight: 600; }
     .cat-count { font-size: 12px; color: #718096; }
     .publish-info { background: #161b27; border: 1px solid #2a3344; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
@@ -733,7 +738,7 @@
   // The app/code build — bump on notable feature or fix commits. Distinct
   // from content.json's `version`, which tracks published CONTENT and
   // increments automatically on every publish.
-  const APP_VERSION = '1.7.2';
+  const APP_VERSION = '1.8.0';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -2398,7 +2403,8 @@
     list.innerHTML = state.categories.map((cat, i) => {
       const count = state.pages.filter(p => p.category === cat).length;
       const safeCat = encodeURIComponent(cat).replace(/'/g, '%27');
-      return `<div class="cat-item" draggable="true"
+      const gated = state.memberOnlyCategories.includes(cat);
+      return `<div class="cat-item${gated ? ' gated' : ''}" draggable="true"
         ondragstart="catDragStart(event, ${i})"
         ondragover="event.preventDefault(); this.classList.add('drag-over')"
         ondragleave="this.classList.remove('drag-over')"
@@ -2406,15 +2412,14 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span>
         <span class="cat-name">${escHtml(cat)}</span>
         <span class="cat-count">${count} page${count!==1?'s':''}</span>
-        <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#a0aec0;cursor:pointer;white-space:nowrap">
-          <input type="checkbox" ${state.memberOnlyCategories.includes(cat)?'checked':''} onchange="toggleCategoryMembersOnly('${safeCat}', this.checked)">
-          🔒 Members only
-        </label>
+        <button class="cat-gate-toggle${gated ? ' gated' : ''}" onclick="toggleCategoryMembersOnly('${safeCat}', ${!gated})" title="${gated ? 'Hidden from logged-out visitors — click to make public' : 'Visible to everyone — click to restrict to members'}">
+          ${gated ? '🔒 Members only' : '🌐 Public'}
+        </button>
         <div class="reorder-btns">
           <button class="a-btn a-btn-ghost a-btn-sm" onclick="moveCategory(${i}, -1)" ${i===0?'disabled':''} title="Move up">▲</button>
           <button class="a-btn a-btn-ghost a-btn-sm" onclick="moveCategory(${i}, 1)" ${i===state.categories.length-1?'disabled':''} title="Move down">▼</button>
         </div>
-        ${count===0 ? `<button class="a-btn a-btn-danger a-btn-sm" onclick="deleteCategory('${escHtml(cat)}')">Delete</button>` : ''}
+        <button class="a-btn a-btn-danger a-btn-sm" onclick="deleteCategory('${escHtml(cat)}')">Delete</button>
       </div>`;
     }).join('');
   }
@@ -2494,9 +2499,16 @@
   }
 
   function deleteCategory(name) {
+    const count = state.pages.filter(p => p.category === name).length;
+    const msg = count
+      ? `Delete "${name}"? ${count} page${count === 1 ? '' : 's'} using it will become uncategorised.`
+      : `Delete "${name}"?`;
+    if (!confirm(msg)) return;
+    state.pages.forEach(p => { if (p.category === name) p.category = ''; });
     state.categories = state.categories.filter(c => c !== name);
     state.memberOnlyCategories = state.memberOnlyCategories.filter(c => c !== name);
     saveState(); renderAdminCategories();
+    showToast(`🗑️ "${name}" deleted${count ? ` · ${count} page${count === 1 ? '' : 's'} now uncategorised` : ''}`);
   }
 
   // ── MEMBERS ──────────────────────────────────────────────────────────────────
