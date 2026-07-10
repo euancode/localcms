@@ -358,6 +358,10 @@
     </div>
     <h1 class="page-title" id="pageTitle"></h1>
     <div class="page-content" id="pageContent"></div>
+    <div id="pageHomeCategoryListWrap" style="display:none;margin-top:48px">
+      <div class="section-label">Browse by category</div>
+      <div class="home-cat-list" id="pageHomeCategoryList"></div>
+    </div>
   </div>
   <div class="site-view" id="view-locked">
     <div style="max-width:400px;margin:0 auto;padding:64px 20px;text-align:center">
@@ -418,14 +422,14 @@
   <div class="admin-body">
     <nav class="admin-sidebar">
       <div class="a-nav-section">Content</div>
+      <button class="a-nav-item" id="anav-home" onclick="showAdminSection('home')">
+        <span class="a-nav-icon">🏠</span><span class="a-nav-lbl">Home Page</span>
+      </button>
       <button class="a-nav-item active" id="anav-pages" onclick="showAdminSection('pages')">
         <span class="a-nav-icon">📄</span><span class="a-nav-lbl">Pages</span>
       </button>
       <button class="a-nav-item" id="anav-categories" onclick="showAdminSection('categories')">
         <span class="a-nav-icon">🏷️</span><span class="a-nav-lbl">Categories</span>
-      </button>
-      <button class="a-nav-item" id="anav-home" onclick="showAdminSection('home')">
-        <span class="a-nav-icon">🏠</span><span class="a-nav-lbl">Home Page</span>
       </button>
       <button class="a-nav-item" id="anav-media" onclick="showAdminSection('media')">
         <span class="a-nav-icon">🖼️</span><span class="a-nav-lbl">Media</span>
@@ -729,7 +733,7 @@
   // The app/code build — bump on notable feature or fix commits. Distinct
   // from content.json's `version`, which tracks published CONTENT and
   // increments automatically on every publish.
-  const APP_VERSION = '1.7.1';
+  const APP_VERSION = '1.7.2';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -1165,14 +1169,20 @@
     const grid = document.getElementById('homeGrid');
     grid.innerHTML = pub.length ? pub.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">✍️</div><p>No published pages yet.</p></div>`;
 
-    const catWrap = document.getElementById('homeCategoryListWrap');
-    if (state.homeShowCategories) {
-      const cats = state.categories.filter(cat => !isCategoryLocked(cat) && state.pages.some(p => p.category === cat && p.status === 'published'));
-      document.getElementById('homeCategoryList').innerHTML = cats.map(cat => `<button class="home-cat-link" onclick="showCategory('${escHtml(cat)}')">${escHtml(cat)}</button>`).join('');
-      catWrap.style.display = cats.length ? '' : 'none';
-    } else {
-      catWrap.style.display = 'none';
-    }
+    renderCategoryList('homeCategoryListWrap', 'homeCategoryList');
+  }
+
+  // Shared by the grid home view and the "specific page as home" view (see
+  // showPage) — a category can be flagged to show here even when it only
+  // has a single published page, since it's still a valid destination
+  // (showCategory redirects straight to that one page, same as clicking it
+  // anywhere else in the nav).
+  function renderCategoryList(wrapId, listId) {
+    const wrap = document.getElementById(wrapId);
+    if (!state.homeShowCategories) { wrap.style.display = 'none'; return; }
+    const cats = state.categories.filter(cat => !isCategoryLocked(cat) && state.pages.some(p => p.category === cat && p.status === 'published'));
+    document.getElementById(listId).innerHTML = cats.map(cat => `<button class="home-cat-link" onclick="showCategory('${escHtml(cat)}')">${escHtml(cat)}</button>`).join('');
+    wrap.style.display = cats.length ? '' : 'none';
   }
 
   // A page that shares its exact title with the category (a "hub" page that
@@ -1229,6 +1239,11 @@
     document.getElementById('pageDate').textContent = d;
     document.getElementById('pageTitle').textContent = page.title;
     document.getElementById('pageContent').innerHTML = page.content;
+    if (state.homeMode === 'page' && state.homePageId === id) {
+      renderCategoryList('pageHomeCategoryListWrap', 'pageHomeCategoryList');
+    } else {
+      document.getElementById('pageHomeCategoryListWrap').style.display = 'none';
+    }
     activateView('page');
     if (!opts || opts.push !== false) navigateUrl(location.pathname + '?page=' + encodeURIComponent(page.slug), opts && opts.replace);
   }
