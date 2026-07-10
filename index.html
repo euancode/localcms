@@ -21,9 +21,12 @@
 
     /* NAV */
     #site-nav { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
-    .nav-inner { max-width: 1100px; margin: 0 auto; padding: 0 20px; height: 58px; display: flex; align-items: center; gap: 12px; }
+    .nav-inner { max-width: 1100px; margin: 0 auto; padding: 10px 20px; min-height: 58px; display: flex; align-items: center; gap: 12px; }
     .nav-brand { font-size: 18px; font-weight: 900; color: var(--accent); cursor: pointer; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45vw; }
-    .nav-links { display: flex; flex-wrap: nowrap; gap: 4px; flex: 1 1 auto; overflow: hidden; min-width: 70px; }
+    /* Wraps onto up to 2 rows before JS trims the rest into "More" — see
+       layoutNavOverflow, which counts rows via each item's rendered top
+       offset rather than the single-row width budget this used before. */
+    .nav-links { display: flex; flex-wrap: wrap; gap: 6px 4px; flex: 1 1 auto; max-height: 76px; overflow: hidden; min-width: 70px; }
     .nav-link { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--text-soft); cursor: pointer; white-space: nowrap; transition: all .15s; border: none; background: none; flex-shrink: 0; }
     .nav-link:hover, .nav-link.active { background: var(--accent); color: #fff; }
     .nav-more-wrap { position: relative; flex-shrink: 0; }
@@ -44,7 +47,7 @@
        not pure CSS :hover — the trigger and the panel below it aren't in
        the same visual flow, so hover would otherwise drop the instant the
        mouse crosses the gap between them. */
-    .mega-panel { display: none; position: fixed; left: 0; right: 0; top: 58px; background: var(--card); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); box-shadow: 0 16px 32px rgba(0,0,0,.14); max-height: calc(100vh - 58px); overflow-y: auto; z-index: 500; }
+    .mega-panel { display: none; position: fixed; left: 0; right: 0; top: var(--nav-h, 58px); background: var(--card); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); box-shadow: 0 16px 32px rgba(0,0,0,.14); max-height: calc(100vh - var(--nav-h, 58px)); overflow-y: auto; z-index: 500; }
     .mega-panel.open { display: block; }
     .mega-panel-inner { max-width: 1100px; margin: 0 auto; padding: 24px 20px; column-width: 200px; column-gap: 32px; }
     /* Inside "More", a full-width panel would sit on top of (and hide) the
@@ -89,6 +92,13 @@
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
     .nav-lock { font-size: 18px; cursor: pointer; opacity: .3; transition: opacity .15s; background: none; border: none; padding: 4px; }
     .nav-lock:hover { opacity: .7; }
+
+    /* FOOTER BAR — version, publish date, member login and admin access
+       live down here instead of the top nav, freeing that space for main
+       menu items to wrap across 2 rows (see .nav-links). */
+    #site-footer-bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--border); z-index: 90; }
+    .footer-bar-inner { max-width: 1100px; margin: 0 auto; padding: 0 20px; height: 44px; display: flex; align-items: center; gap: 8px; }
+    body { padding-bottom: 44px; }
 
     /* SITE VIEWS */
     .site-view { display: none; }
@@ -277,13 +287,19 @@
           <div class="search-results" id="searchResults"></div>
         </div>
       </div>
-      <button class="ver-btn" id="verBtn" onclick="showVersionHistory()">v1</button>
-      <span class="ver-date-label" id="verDateLabel"></span>
-      <button class="nav-search-btn" id="memberBtn" onclick="handleMemberButtonClick()" title="Member login">👤</button>
-      <button class="nav-lock" onclick="openLock()">🔒</button>
     </div>
   </div>
 </nav>
+
+<div id="site-footer-bar">
+  <div class="footer-bar-inner">
+    <button class="ver-btn" id="verBtn" onclick="showVersionHistory()">v1</button>
+    <span class="ver-date-label" id="verDateLabel"></span>
+    <div style="flex:1"></div>
+    <button class="nav-search-btn" id="memberBtn" onclick="handleMemberButtonClick()" title="Member login">👤</button>
+    <button class="nav-lock" onclick="openLock()">🔒</button>
+  </div>
+</div>
 
 <main>
   <div class="site-view active" id="view-home">
@@ -883,9 +899,14 @@
     }
   });
 
-  // If the rendered links overflow the available nav width, collapse the
-  // tail into a "More" dropdown instead of relying on hidden horizontal
-  // scroll (which isn't discoverable, especially with a mouse). The
+  const NAV_MAX_ROWS = 2;
+
+  // Main menu items wrap across up to NAV_MAX_ROWS rows (see .nav-links);
+  // anything that would spill onto a further row collapses into "More"
+  // instead of relying on hidden overflow (which isn't discoverable,
+  // especially with a mouse). Row membership is measured directly from
+  // each button's rendered top offset rather than computed from width,
+  // since wrapping makes a width budget the wrong unit. The "More"
   // dropdown lives as a sibling of #navLinks (not inside it) since
   // #navLinks has overflow:hidden, which would otherwise clip the dropdown
   // itself along with the links it's meant to reveal.
@@ -893,18 +914,20 @@
     const container = document.getElementById('navLinks');
     const buttons = Array.from(container.children);
     if (!buttons.length) return;
-    const containerRight = container.getBoundingClientRect().right;
-    const MORE_WIDTH = 76;
+    const firstTop = buttons[0].getBoundingClientRect().top;
+    const rowTolerance = buttons[0].getBoundingClientRect().height / 2;
     let overflowStart = -1;
+    let rowStartTop = firstTop, rowCount = 1;
     for (let i = 0; i < buttons.length; i++) {
-      const budget = containerRight - (i < buttons.length - 1 ? MORE_WIDTH : 0);
-      if (buttons[i].getBoundingClientRect().right > budget) { overflowStart = i; break; }
+      const top = buttons[i].getBoundingClientRect().top;
+      if (top > rowStartTop + rowTolerance) { rowCount++; rowStartTop = top; }
+      if (rowCount > NAV_MAX_ROWS) { overflowStart = i; break; }
     }
-    if (overflowStart === -1) return;
+    if (overflowStart === -1) { updateNavHeightVar(); return; }
 
     const visible = items.slice(0, Math.max(1, overflowStart));
     const overflow = items.slice(visible.length);
-    if (!overflow.length) return;
+    if (!overflow.length) { updateNavHeightVar(); return; }
 
     container.innerHTML = visible.map(navItemHtml).join('');
     document.getElementById('navMoreBtn').classList.toggle('active', overflow.some(o => o.active));
@@ -913,6 +936,16 @@
     document.getElementById('navMoreWrap').style.display = '';
     bindMegaHoverAll(container);
     bindMegaHoverAll(moreMenu);
+    updateNavHeightVar();
+  }
+
+  // The full-width mega panel is position:fixed (not a layout descendant of
+  // the nav), so it needs the nav's actual rendered height — which now
+  // varies with row count — to anchor just below it instead of a
+  // hardcoded value.
+  function updateNavHeightVar() {
+    const nav = document.getElementById('site-nav');
+    if (nav) document.documentElement.style.setProperty('--nav-h', nav.offsetHeight + 'px');
   }
 
   function toggleNavMore(e) {
