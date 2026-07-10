@@ -257,6 +257,11 @@
     .editor-body a { color: #667eea; }
     .editor-body blockquote { border-left: 3px solid #667eea; padding: 8px 14px; margin: 12px 0; color: #a0aec0; background: #1e2535; border-radius: 0 6px 6px 0; }
     .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-top: 12px; }
+    .media-summary { font-size: 13px; color: #a0aec0; background: #1e2535; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; }
+    .media-group { margin-bottom: 26px; }
+    .media-group-label { font-size: 12px; font-weight: 700; color: #cbd5e0; display: flex; align-items: center; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid #2a3344; margin-bottom: 4px; }
+    .media-group-count { font-size: 11px; font-weight: 700; background: #2a3344; color: #a0aec0; padding: 1px 8px; border-radius: 20px; }
+    .media-group-label.unused .media-group-count { background: #4a2a2a; color: #e2a0a0; }
     .media-thumb { background: #161b27; border: 2px solid #2a3344; border-radius: 8px; aspect-ratio: 1; overflow: hidden; cursor: pointer; transition: border-color .15s; position: relative; }
     .media-thumb:hover { border-color: #667eea; }
     .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -545,7 +550,7 @@
           </div>
         </div>
         <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those — hover a linked item and click ⬇️ to pull a permanent local copy (also updates any page already using it), useful if the original source might disappear. "⬇️ Download all" bundles every externally-linked image and document into one zip (an <code>images/</code> and a <code>documents/</code> folder) and immediately relinks them to those paths — upload both folders to your server before publishing, or the media will 404 until you do. Both actions need the source server to allow cross-origin downloads; when it doesn't, they automatically retry through a public CORS proxy (<code>allorigins.win</code>) as a fallback — your media briefly transits that third-party service in that case, fine for public photos but worth knowing. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
-        <div class="media-grid" id="adminMediaGrid"></div>
+        <div id="adminMediaGrid"></div>
       </div>
 
       <!-- MEMBERS -->
@@ -667,7 +672,7 @@
   // The app/code build — bump on notable feature or fix commits. Distinct
   // from content.json's `version`, which tracks published CONTENT and
   // increments automatically on every publish.
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.4.0';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -1580,17 +1585,56 @@
       : `<img src="${img.data}" alt="${escHtml(img.name)}" loading="lazy">`;
   }
 
-  function renderAdminMedia() {
-    const grid = document.getElementById('adminMediaGrid');
-    if (!state.images.length) { grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🖼️</div><p>No images yet.</p></div>`; return; }
-    grid.innerHTML = state.images.map(img => `
+  function mediaThumbCardHtml(img) {
+    return `
       <div class="media-thumb">
         ${mediaThumbInnerHtml(img)}
         ${img.external ? `<span class="media-ext-badge" title="Linked by URL, not stored in your browser">🔗</span>` : ''}
         <div class="media-thumb-name">${escHtml(img.name)}</div>
         ${img.external ? `<button class="media-thumb-copy" id="copyBtn-${img.id}" onclick="copyMediaLocally('${img.id}',event)" title="Save a local copy in your browser">⬇️</button>` : ''}
         <button class="media-thumb-del" onclick="deleteImage('${img.id}',event)">✕</button>
-      </div>`).join('');
+      </div>`;
+  }
+
+  // Groups media by the page(s) that actually reference it (as a featured
+  // image or inline in content), rather than one flat list — the point is
+  // to answer "where is this used" and surface anything that's unused and
+  // safe to clean up. An item used on multiple pages appears in each of
+  // their groups.
+  function renderAdminMedia() {
+    const container = document.getElementById('adminMediaGrid');
+    if (!state.images.length) { container.innerHTML = `<div class="empty"><div class="empty-icon">🖼️</div><p>No images yet.</p></div>`; return; }
+
+    const imgCount = state.images.filter(i => (i.kind || 'image') !== 'pdf').length;
+    const pdfCount = state.images.length - imgCount;
+
+    const byPage = new Map();
+    const unused = [];
+    state.images.forEach(img => {
+      const usedIn = state.pages.filter(p => p.featuredImage === img.data || (p.content && p.content.includes(img.data)));
+      if (!usedIn.length) { unused.push(img); return; }
+      usedIn.forEach(p => {
+        if (!byPage.has(p.id)) byPage.set(p.id, { page: p, items: [] });
+        byPage.get(p.id).items.push(img);
+      });
+    });
+    const usedCount = state.images.length - unused.length;
+
+    const summaryHtml = `<div class="media-summary">${state.images.length} item${state.images.length === 1 ? '' : 's'} — ${imgCount} image${imgCount === 1 ? '' : 's'}, ${pdfCount} document${pdfCount === 1 ? '' : 's'} · ${usedCount} referenced on a page, ${unused.length} unused</div>`;
+
+    const groupHtml = (label, items, cls) => `
+      <div class="media-group">
+        <div class="media-group-label${cls ? ' ' + cls : ''}">${escHtml(label)} <span class="media-group-count">${items.length}</span></div>
+        <div class="media-grid">${items.map(mediaThumbCardHtml).join('')}</div>
+      </div>`;
+
+    const pageGroups = [...byPage.values()]
+      .sort((a, b) => b.items.length - a.items.length)
+      .map(({ page, items }) => groupHtml(page.title, items))
+      .join('');
+    const unusedHtml = unused.length ? groupHtml('Not used on any page', unused, 'unused') : '';
+
+    container.innerHTML = summaryHtml + pageGroups + unusedHtml;
   }
 
   function blobToDataUrl(blob) {
