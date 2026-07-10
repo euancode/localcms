@@ -22,17 +22,35 @@
     /* NAV */
     #site-nav { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
     .nav-inner { max-width: 1100px; margin: 0 auto; padding: 10px 20px; min-height: 58px; display: flex; align-items: center; gap: 12px; }
-    .nav-brand { font-size: 18px; font-weight: 900; color: var(--accent); cursor: pointer; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45vw; }
+    /* flex-shrink:0 keeps the site name at full size — without it, the
+       browser's flex-shrink distribution (working off nav-links' large
+       auto-basis) squeezed the brand down to a few characters before
+       nav-links gave up any of its own space. max-width/ellipsis stays on
+       purely as a safety net for a pathologically long site title. */
+    .nav-brand { font-size: 18px; font-weight: 900; color: var(--accent); cursor: pointer; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45vw; }
     /* Wraps onto up to 2 rows before JS trims the rest into "More" — see
        layoutNavOverflow, which counts rows via each item's rendered top
-       offset rather than the single-row width budget this used before. */
+       offset rather than the single-row width budget this used before.
+       "More" itself renders as the last item INSIDE this wrap flow (see
+       navMoreWrapHtml) rather than a separate flex sibling — as a sibling
+       it always sat at the far right of the whole allocated width, which
+       left a large gap after wherever the actual last item happened to
+       wrap to. */
     .nav-links { display: flex; flex-wrap: wrap; gap: 6px 4px; flex: 1 1 auto; max-height: 76px; overflow: hidden; min-width: 70px; }
     .nav-link { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--text-soft); cursor: pointer; white-space: nowrap; transition: all .15s; border: none; background: none; flex-shrink: 0; }
     .nav-link:hover, .nav-link.active { background: var(--accent); color: #fff; }
     .nav-more-wrap { position: relative; flex-shrink: 0; }
-    .nav-more-menu { position: absolute; top: calc(100% + 8px); left: 0; min-width: 170px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 6px; display: none; flex-direction: column; gap: 2px; z-index: 200; }
+    /* Opens leftward (right:0) — "More" typically lands well to the right
+       within its row, so a left-anchored dropdown ran off the viewport
+       edge for longer item labels. */
+    /* position:fixed (coordinates set in toggleNavMore, not CSS) rather
+       than absolute-relative-to-trigger — the trigger now lives inside
+       #navLinks, which has overflow:hidden to hide an unresolved 3rd row
+       during layout; an absolutely-positioned descendant would be clipped
+       by that ancestor even while "open". Fixed positioning escapes it. */
+    .nav-more-menu { position: fixed; min-width: 170px; max-width: min(320px, 90vw); background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 6px; display: none; flex-direction: column; gap: 2px; z-index: 200; }
     .nav-more-menu.open { display: flex; }
-    .nav-more-item { background: none; border: none; text-align: left; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--text-soft); cursor: pointer; white-space: nowrap; }
+    .nav-more-item { background: none; border: none; text-align: left; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--text-soft); cursor: pointer; white-space: normal; line-height: 1.35; }
     .nav-more-item:hover, .nav-more-item.active { background: var(--accent); color: #fff; }
     .nav-item-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
     .nav-caret { background: none; border: none; color: var(--text-soft); opacity: .55; cursor: pointer; padding: 4px 6px 4px 0; font-size: 10px; line-height: 1; }
@@ -275,10 +293,6 @@
   <div class="nav-inner">
     <span class="nav-brand" id="navBrand" onclick="showView('home')">LocalCMS</span>
     <div class="nav-links" id="navLinks"></div>
-    <div class="nav-more-wrap" id="navMoreWrap" style="display:none">
-      <button class="nav-link nav-more-btn" id="navMoreBtn" onclick="toggleNavMore(event)">More ▾</button>
-      <div class="nav-more-menu" id="navMoreMenu"></div>
-    </div>
     <div class="nav-right">
       <div class="nav-search-wrap">
         <button class="nav-search-btn" onclick="toggleSearch()" title="Search" aria-label="Search">🔍</button>
@@ -765,11 +779,21 @@
       }
     });
     const container = document.getElementById('navLinks');
-    container.innerHTML = items.map(navItemHtml).join('');
+    container.innerHTML = items.map(navItemHtml).join('') + NAV_MORE_WRAP_HTML;
     document.getElementById('navMoreWrap').style.display = 'none';
     bindMegaHoverAll(container);
     requestAnimationFrame(() => layoutNavOverflow(items));
   }
+
+  // Rendered as the LAST item inside #navLinks's own wrap flow (not a
+  // separate flex sibling) so "More" lands immediately after wherever the
+  // last visible item actually wraps to, instead of at the far right of
+  // #navLinks's full allocated width — which left a large gap whenever the
+  // last row didn't fill that width.
+  const NAV_MORE_WRAP_HTML = `<div class="nav-more-wrap" id="navMoreWrap" style="display:none">
+    <button class="nav-link nav-more-btn" id="navMoreBtn" onclick="toggleNavMore(event)">More ▾</button>
+    <div class="nav-more-menu" id="navMoreMenu"></div>
+  </div>`;
 
   function navLinkOnclick(it) {
     if (it.kind === 'home') return `showView('home')`;
@@ -910,30 +934,40 @@
   // dropdown lives as a sibling of #navLinks (not inside it) since
   // #navLinks has overflow:hidden, which would otherwise clip the dropdown
   // itself along with the links it's meant to reveal.
+  function navRowCount(els) {
+    if (!els.length) return 0;
+    const firstTop = els[0].getBoundingClientRect().top;
+    const tolerance = els[0].getBoundingClientRect().height / 2;
+    let rows = 1, rowTop = firstTop;
+    els.forEach(el => {
+      const top = el.getBoundingClientRect().top;
+      if (top > rowTop + tolerance) { rows++; rowTop = top; }
+    });
+    return rows;
+  }
+
   function layoutNavOverflow(items) {
     const container = document.getElementById('navLinks');
-    const buttons = Array.from(container.children);
-    if (!buttons.length) return;
-    const firstTop = buttons[0].getBoundingClientRect().top;
-    const rowTolerance = buttons[0].getBoundingClientRect().height / 2;
-    let overflowStart = -1;
-    let rowStartTop = firstTop, rowCount = 1;
-    for (let i = 0; i < buttons.length; i++) {
-      const top = buttons[i].getBoundingClientRect().top;
-      if (top > rowStartTop + rowTolerance) { rowCount++; rowStartTop = top; }
-      if (rowCount > NAV_MAX_ROWS) { overflowStart = i; break; }
-    }
-    if (overflowStart === -1) { updateNavHeightVar(); return; }
+    const initial = Array.from(container.children).filter(c => c.id !== 'navMoreWrap');
+    if (!initial.length || navRowCount(initial) <= NAV_MAX_ROWS) { updateNavHeightVar(); return; }
 
-    const visible = items.slice(0, Math.max(1, overflowStart));
-    const overflow = items.slice(visible.length);
-    if (!overflow.length) { updateNavHeightVar(); return; }
+    // Trim from the end until everything fits within NAV_MAX_ROWS rows —
+    // including the "More" trigger itself once it's shown, since it needs
+    // room in that last row too, not just the items before it.
+    let visibleCount = items.length;
+    let buttons;
+    do {
+      visibleCount--;
+      const visible = items.slice(0, Math.max(1, visibleCount));
+      container.innerHTML = visible.map(navItemHtml).join('') + NAV_MORE_WRAP_HTML;
+      document.getElementById('navMoreWrap').style.display = '';
+      buttons = Array.from(container.children);
+    } while (navRowCount(buttons) > NAV_MAX_ROWS && visibleCount > 1);
 
-    container.innerHTML = visible.map(navItemHtml).join('');
+    const overflow = items.slice(Math.max(1, visibleCount));
     document.getElementById('navMoreBtn').classList.toggle('active', overflow.some(o => o.active));
     const moreMenu = document.getElementById('navMoreMenu');
     moreMenu.innerHTML = overflow.map(navMoreItemHtml).join('');
-    document.getElementById('navMoreWrap').style.display = '';
     bindMegaHoverAll(container);
     bindMegaHoverAll(moreMenu);
     updateNavHeightVar();
@@ -950,7 +984,14 @@
 
   function toggleNavMore(e) {
     e.stopPropagation();
-    document.getElementById('navMoreMenu').classList.toggle('open');
+    const menu = document.getElementById('navMoreMenu');
+    const willOpen = !menu.classList.contains('open');
+    if (willOpen) {
+      const rect = document.getElementById('navMoreBtn').getBoundingClientRect();
+      menu.style.top = (rect.bottom + 8) + 'px';
+      menu.style.right = (window.innerWidth - rect.right) + 'px';
+    }
+    menu.classList.toggle('open');
   }
 
   function closeNavMore() {
