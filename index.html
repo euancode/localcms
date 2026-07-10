@@ -509,7 +509,7 @@
             <button class="a-btn a-btn-ghost" onclick="downloadAllMedia()">⬇️ Download all</button>
           </div>
         </div>
-        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those — hover a linked item and click ⬇️ to pull a permanent local copy (also updates any page already using it), useful if the original source might disappear. This needs the source server to allow cross-origin downloads; not all do. "⬇️ Download all" bundles every externally-linked image and document into one zip (an <code>images/</code> and a <code>documents/</code> folder) and immediately relinks them to those paths — upload both folders to your server before publishing, or the media will 404 until you do. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
+        <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those — hover a linked item and click ⬇️ to pull a permanent local copy (also updates any page already using it), useful if the original source might disappear. "⬇️ Download all" bundles every externally-linked image and document into one zip (an <code>images/</code> and a <code>documents/</code> folder) and immediately relinks them to those paths — upload both folders to your server before publishing, or the media will 404 until you do. Both actions need the source server to allow cross-origin downloads; when it doesn't, they automatically retry through a public CORS proxy (<code>allorigins.win</code>) as a fallback — your media briefly transits that third-party service in that case, fine for public photos but worth knowing. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
         <div class="media-grid" id="adminMediaGrid"></div>
       </div>
 
@@ -1495,6 +1495,24 @@
     });
   }
 
+  // Most external hosts (e.g. a plain WordPress uploads folder) don't send
+  // Access-Control-Allow-Origin, so a direct fetch() is blocked by the
+  // browser before this code ever sees a response — that's a browser
+  // security restriction, not something fixable from here. As a
+  // best-effort fallback, a failed direct fetch retries through a public
+  // CORS proxy. Media bytes transit through that third party in that case
+  // — fine for public photos, not for anything sensitive.
+  const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+  async function fetchMediaBlob(url) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return await res.blob();
+    } catch (e) { /* fall through to proxy */ }
+    const res2 = await fetch(CORS_PROXY + encodeURIComponent(url));
+    if (!res2.ok) throw new Error('fetch failed (direct and via proxy)');
+    return await res2.blob();
+  }
+
   // Pages that reference a media URL directly (in content or as a featured
   // image) need updating too whenever that URL changes, not just the
   // media library entry — shared by the single-item and bulk download paths.
@@ -1517,9 +1535,7 @@
     if (btn) btn.disabled = true;
     showToast('⬇️ Downloading a local copy…');
     try {
-      const res = await fetch(img.data);
-      if (!res.ok) throw new Error('bad response');
-      const dataUrl = await blobToDataUrl(await res.blob());
+      const dataUrl = await blobToDataUrl(await fetchMediaBlob(img.data));
       const oldUrl = img.data;
       img.data = dataUrl;
       delete img.external;
@@ -1647,9 +1663,8 @@
     let failed = 0;
     for (const img of targets) {
       try {
-        const res = await fetch(img.data);
-        if (!res.ok) throw new Error('bad response');
-        const buf = new Uint8Array(await res.arrayBuffer());
+        const blob = await fetchMediaBlob(img.data);
+        const buf = new Uint8Array(await blob.arrayBuffer());
         const folder = img.kind === 'pdf' ? 'documents' : 'images';
         const name = safeMediaFilename(img, usedNames[folder]);
         const path = folder + '/' + name;
@@ -1660,7 +1675,7 @@
       }
     }
 
-    if (!files.length) { showToast('⚠️ Could not download any media — the source server may be blocking cross-origin requests'); return; }
+    if (!files.length) { showToast('⚠️ Could not download any media — it failed even via the CORS proxy fallback'); return; }
 
     const zipBlob = buildZip(files);
     const a = document.createElement('a');
@@ -1676,7 +1691,7 @@
     });
     saveState();
     renderAdminMedia();
-    showToast(`✅ Downloaded ${files.length} file${files.length === 1 ? '' : 's'} as a zip · relinked to /images and /documents${pagesUpdated ? ` · updated ${pagesUpdated} page${pagesUpdated === 1 ? '' : 's'}` : ''}${failed ? ` · ${failed} failed (CORS-blocked)` : ''}`);
+    showToast(`✅ Downloaded ${files.length} file${files.length === 1 ? '' : 's'} as a zip · relinked to /images and /documents${pagesUpdated ? ` · updated ${pagesUpdated} page${pagesUpdated === 1 ? '' : 's'}` : ''}${failed ? ` · ${failed} failed even via the CORS proxy` : ''}`);
   }
 
   function deleteImage(id, e) {
