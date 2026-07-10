@@ -48,7 +48,11 @@
        #navLinks, which has overflow:hidden to hide an unresolved 3rd row
        during layout; an absolutely-positioned descendant would be clipped
        by that ancestor even while "open". Fixed positioning escapes it. */
-    .nav-more-menu { position: fixed; min-width: 170px; max-width: min(320px, 90vw); background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 6px; display: none; flex-direction: column; gap: 2px; z-index: 200; }
+    /* max-height/overflow-y so a long list scrolls internally instead of
+       running off the bottom of the (fixed-position, so page-scroll can't
+       reveal more of it) viewport — a real problem on short mobile screens
+       with many categories. */
+    .nav-more-menu { position: fixed; min-width: 170px; max-width: min(320px, 90vw); max-height: min(70vh, 480px); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 6px; display: none; flex-direction: column; gap: 2px; z-index: 200; }
     .nav-more-menu.open { display: flex; }
     .nav-more-item { background: none; border: none; text-align: left; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--text-soft); cursor: pointer; white-space: normal; line-height: 1.35; }
     .nav-more-item:hover, .nav-more-item.active { background: var(--accent); color: #fff; }
@@ -69,11 +73,12 @@
     .mega-panel.open { display: block; }
     .mega-panel-inner { max-width: 1100px; margin: 0 auto; padding: 24px 20px; column-width: 200px; column-gap: 32px; }
     /* Inside "More", a full-width panel would sit on top of (and hide) the
-       "More" list it's opened from — so it's a compact flyout instead,
-       positioned relative to its own trigger row and opening leftward
-       since "More" sits at the nav bar's right edge. Same grouped content,
-       just laid out narrower. */
-    .mega-panel.compact { position: absolute; top: 0; left: auto; right: 100%; margin-right: 6px; min-width: 220px; max-width: 340px; max-height: 70vh; border: 1px solid var(--border); border-radius: 10px; }
+       "More" list it's opened from — so it's a compact flyout instead.
+       position:fixed with coordinates from positionCompactPanel (JS), not
+       CSS-anchored to the trigger — opens leftward when there's room,
+       otherwise drops below (see positionCompactPanel for why). Same
+       grouped content, just laid out narrower. */
+    .mega-panel.compact { position: fixed; min-width: 220px; max-width: min(340px, 90vw); max-height: min(70vh, 420px); overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
     .mega-panel.compact .mega-panel-inner { max-width: none; margin: 0; padding: 10px; column-width: 170px; column-gap: 18px; }
     .mega-group { break-inside: avoid; margin-bottom: 20px; }
     .mega-link { display: block; width: 100%; text-align: left; background: none; border: none; padding: 5px 0; font-size: 14px; color: var(--text-soft); cursor: pointer; line-height: 1.4; }
@@ -662,7 +667,7 @@
   // The app/code build — bump on notable feature or fix commits. Distinct
   // from content.json's `version`, which tracks published CONTENT and
   // increments automatically on every publish.
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.3.0';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -883,14 +888,41 @@
     closeNavMore();
   }
 
+  // Compact flyouts (categories nested inside "More") are position:fixed
+  // with JS-computed coordinates rather than CSS-anchored to their
+  // trigger — same reason as the top-level mega panel and #navMoreMenu:
+  // fixed positioning escapes ancestor overflow clipping, which matters
+  // here since #navMoreMenu now scrolls internally (overflow-y:auto also
+  // makes overflow-x compute to 'auto', clipping anything that tries to
+  // bleed outside via absolute positioning). Opens to the left when there's
+  // room (the desktop case — "More" sits at the nav bar's right edge);
+  // otherwise drops below the trigger instead, since on a narrow mobile
+  // screen there's usually no room on either side.
+  function positionCompactPanel(wrapEl, panel) {
+    if (!panel.classList.contains('compact')) return;
+    const rect = wrapEl.getBoundingClientRect();
+    const panelWidth = Math.min(340, window.innerWidth * 0.9);
+    if (rect.left - panelWidth - 6 >= 4) {
+      panel.style.top = rect.top + 'px';
+      panel.style.left = (rect.left - panelWidth - 6) + 'px';
+      panel.style.right = 'auto';
+    } else {
+      panel.style.top = (rect.bottom + 4) + 'px';
+      panel.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - panelWidth - 4)) + 'px';
+      panel.style.right = 'auto';
+    }
+  }
+
   // Always opens (never toggles closed) — on a mouse, hovering the trigger
   // already opens the panel before a click can land, so a toggle would
   // immediately re-close it on click. Closing happens via outside-click or
   // mouse-leave instead; this is purely the tap-to-open path for touch.
   function openMegaPanel(e, caretEl) {
     e.stopPropagation();
-    const panel = caretEl.closest('.nav-item-wrap, .nav-more-item-wrap').querySelector('.mega-panel');
+    const wrapEl = caretEl.closest('.nav-item-wrap, .nav-more-item-wrap');
+    const panel = wrapEl.querySelector('.mega-panel');
     document.querySelectorAll('.mega-panel.open').forEach(p => { if (p !== panel) p.classList.remove('open'); });
+    positionCompactPanel(wrapEl, panel);
     panel.classList.add('open');
   }
 
@@ -907,6 +939,7 @@
       const open = () => {
         clearTimeout(closeTimer);
         document.querySelectorAll('.mega-panel.open').forEach(p => { if (p !== panel) p.classList.remove('open'); });
+        positionCompactPanel(wrap, panel);
         panel.classList.add('open');
       };
       const scheduleClose = () => { closeTimer = setTimeout(() => panel.classList.remove('open'), 250); };
