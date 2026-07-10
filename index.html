@@ -704,6 +704,11 @@
         </div>
         <button class="a-btn a-btn-primary" onclick="saveSettings()">Save Settings</button>
         <div style="margin-top:24px;padding-top:20px;border-top:1px solid #2a3344">
+          <div class="a-form-label">Site content size</div>
+          <div id="siteSizeStat" style="font-size:13px;color:#a0aec0;background:#1e2535;border-radius:8px;padding:10px 14px;margin-top:6px"></div>
+          <div style="font-size:11px;color:#4a5568;margin-top:6px">Everything in this figure downloads in full on every visit — it's <code>content.json</code>'s size, not just what's stored locally in your browser. Includes any images embedded directly in page content or as a featured image; media in the Media Library linked by URL (🔗) doesn't count here since it's fetched separately, only when a visitor actually views that image.</div>
+        </div>
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid #2a3344">
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <button class="a-btn a-btn-danger a-btn-sm" onclick="resetToPublished()">↩ Reset to published version</button>
             <button class="a-btn a-btn-danger a-btn-sm" onclick="deleteAllContent()">🗑️ Delete all content</button>
@@ -724,7 +729,7 @@
   // The app/code build — bump on notable feature or fix commits. Distinct
   // from content.json's `version`, which tracks published CONTENT and
   // increments automatically on every publish.
-  const APP_VERSION = '1.7.0';
+  const APP_VERSION = '1.7.1';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -1803,6 +1808,37 @@
     return Math.floor(base64.length * 3 / 4) - padding;
   }
 
+  // Approximates content.json's published size — the payload every visitor
+  // downloads in full before anything renders (see the Settings note on
+  // why this isn't split up yet). Mirrors getExportJson's shape without its
+  // DOM-coupled bits (changelog summary input, live timestamps).
+  function siteContentSizeBytes() {
+    const approx = {
+      siteTitle: state.siteTitle, siteTagline: state.siteTagline, siteUrl: state.siteUrl,
+      themeColor: state.themeColor, categories: state.categories,
+      memberOnlyCategories: state.memberOnlyCategories, members: state.members,
+      homeMode: state.homeMode, homePageId: state.homePageId, homeShowAll: state.homeShowAll,
+      homeSelectedPages: state.homeSelectedPages, homeShowCategories: state.homeShowCategories,
+      pages: state.pages,
+    };
+    return new Blob([JSON.stringify(approx)]).size;
+  }
+
+  // Images embedded directly as base64 (pasted/uploaded into a page, or set
+  // as a featured image) are the usual dominant contributor to content.json
+  // size — broken out separately since it's the actionable number (move
+  // them to external links via Media > Download all to shrink the file).
+  function embeddedImageStats() {
+    const dataUriRe = /data:[^"'()\s]+;base64,[A-Za-z0-9+/=]+/g;
+    let total = 0, count = 0;
+    state.pages.forEach(p => {
+      const found = (p.content || '').match(dataUriRe) || [];
+      if (p.featuredImage && p.featuredImage.startsWith('data:')) found.push(p.featuredImage);
+      found.forEach(uri => { total += dataUrlBytes(uri); count++; });
+    });
+    return { total, count };
+  }
+
   function blobToDataUrl(blob) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -2716,6 +2752,11 @@
     document.getElementById('colorPreview').style.background = color;
     document.getElementById('colorErr').textContent = '';
     renderColorPalette(color);
+
+    const totalMB = (siteContentSizeBytes() / (1024 * 1024)).toFixed(2);
+    const { total: embedBytes, count: embedCount } = embeddedImageStats();
+    const embedMB = (embedBytes / (1024 * 1024)).toFixed(2);
+    document.getElementById('siteSizeStat').innerHTML = `<strong>${totalMB} MB</strong> — ${state.pages.length} page${state.pages.length === 1 ? '' : 's'}${embedCount ? ` · ${embedCount} embedded image${embedCount === 1 ? '' : 's'} (${embedMB} MB)` : ''}`;
   }
 
   function saveSettings() {
