@@ -456,6 +456,7 @@
           <h2 class="a-heading" style="margin:0">Pages</h2>
           <button class="a-btn a-btn-primary" onclick="newPage()">+ New Page</button>
         </div>
+        <input type="text" class="a-input" id="pageSearchInput" placeholder="🔍 Search pages by title…" style="margin-bottom:16px" oninput="setPageSearchQuery(this.value)">
         <label class="a-form-label" style="margin-bottom:2px">Status</label>
         <div class="filter-row" id="pageStatusFilters"></div>
         <label class="a-form-label" style="margin-bottom:2px">Category</label>
@@ -596,6 +597,7 @@
           </div>
         </div>
         <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those — hover a linked item and click ⬇️ to pull a permanent local copy (also updates any page already using it), useful if the original source might disappear. "⬇️ Download all" bundles every externally-linked image and document into one zip (an <code>images/</code> and a <code>documents/</code> folder) and immediately relinks them to those paths — upload both folders to your server before publishing, or the media will 404 until you do. Both actions need the source server to allow cross-origin downloads; when it doesn't, they automatically retry through a public CORS proxy (<code>allorigins.win</code>) as a fallback — your media briefly transits that third-party service in that case, fine for public photos but worth knowing. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
+        <input type="text" class="a-input" id="mediaSearchInput" placeholder="🔍 Search media by filename…" style="margin-bottom:16px" oninput="setMediaSearchQuery(this.value)">
         <label class="a-form-label" style="margin-bottom:2px">Type</label>
         <div class="filter-row" id="mediaTypeFilters"></div>
         <label class="a-form-label" style="margin-bottom:2px">Source</label>
@@ -722,7 +724,7 @@
   // The app/code build — bump on notable feature or fix commits. Distinct
   // from content.json's `version`, which tracks published CONTENT and
   // increments automatically on every publish.
-  const APP_VERSION = '1.6.0';
+  const APP_VERSION = '1.7.0';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -1442,15 +1444,18 @@
 
   let pageStatusFilter = 'all';
   let pageCategoryFilter = 'all';
+  let pageSearchQuery = '';
 
   function pageMatchesFilters(p) {
     const statusOk = pageStatusFilter === 'all' || p.status === pageStatusFilter;
     const catOk = pageCategoryFilter === 'all' || (pageCategoryFilter === '__none__' ? !p.category : p.category === pageCategoryFilter);
-    return statusOk && catOk;
+    const searchOk = !pageSearchQuery || p.title.toLowerCase().includes(pageSearchQuery.toLowerCase());
+    return statusOk && catOk && searchOk;
   }
 
   function setPageStatusFilter(v) { pageStatusFilter = v; renderAdminPages(); }
   function setPageCategoryFilter(v) { pageCategoryFilter = decodeURIComponent(v); renderAdminPages(); }
+  function setPageSearchQuery(v) { pageSearchQuery = v; renderAdminPages(); }
 
   function filterChipHtml(key, label, count, active, onclickFn) {
     // encodeURIComponent leaves ' unescaped, which would break out of the
@@ -1479,7 +1484,7 @@
     renderPageFilters();
     const list = document.getElementById('adminPagesList');
     if (!state.pages.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">📄</div><p>No pages yet.</p></div>`; return; }
-    const filtering = pageStatusFilter !== 'all' || pageCategoryFilter !== 'all';
+    const filtering = pageStatusFilter !== 'all' || pageCategoryFilter !== 'all' || !!pageSearchQuery;
     const visible = state.pages.map((p, i) => ({ p, i })).filter(({ p }) => pageMatchesFilters(p));
     if (!visible.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><p>No pages match this filter.</p></div>`; return; }
     list.innerHTML = visible.map(({ p, i }) => {
@@ -1699,15 +1704,18 @@
 
   let mediaTypeFilter = 'all';
   let mediaSourceFilter = 'all';
+  let mediaSearchQuery = '';
 
   function mediaMatchesFilters(img) {
     const typeOk = mediaTypeFilter === 'all' || (img.kind || 'image') === mediaTypeFilter;
     const sourceOk = mediaSourceFilter === 'all' || (mediaSourceFilter === 'local' ? !img.external : !!img.external);
-    return typeOk && sourceOk;
+    const searchOk = !mediaSearchQuery || img.name.toLowerCase().includes(mediaSearchQuery.toLowerCase());
+    return typeOk && sourceOk && searchOk;
   }
 
   function setMediaTypeFilter(v) { mediaTypeFilter = v; renderAdminMedia(); }
   function setMediaSourceFilter(v) { mediaSourceFilter = v; renderAdminMedia(); }
+  function setMediaSearchQuery(v) { mediaSearchQuery = v; renderAdminMedia(); }
 
   function renderMediaFilters() {
     const imgCount = state.images.filter(i => (i.kind || 'image') !== 'pdf').length;
