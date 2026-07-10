@@ -672,7 +672,7 @@
   // The app/code build — bump on notable feature or fix commits. Distinct
   // from content.json's `version`, which tracks published CONTENT and
   // increments automatically on every publish.
-  const APP_VERSION = '1.4.0';
+  const APP_VERSION = '1.5.0';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -1587,13 +1587,38 @@
 
   function mediaThumbCardHtml(img) {
     return `
-      <div class="media-thumb">
+      <div class="media-thumb" onclick="openMediaLightbox('${img.id}')">
         ${mediaThumbInnerHtml(img)}
         ${img.external ? `<span class="media-ext-badge" title="Linked by URL, not stored in your browser">🔗</span>` : ''}
         <div class="media-thumb-name">${escHtml(img.name)}</div>
         ${img.external ? `<button class="media-thumb-copy" id="copyBtn-${img.id}" onclick="copyMediaLocally('${img.id}',event)" title="Save a local copy in your browser">⬇️</button>` : ''}
         <button class="media-thumb-del" onclick="deleteImage('${img.id}',event)">✕</button>
       </div>`;
+  }
+
+  // PDFs open in a new tab (no in-app viewer); images get a lightbox.
+  function openMediaLightbox(id) {
+    const img = state.images.find(i => i.id === id);
+    if (!img) return;
+    if (img.kind === 'pdf') { window.open(img.data, '_blank'); return; }
+    const el = document.createElement('div');
+    el.id = 'mediaLightbox';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:4000;display:flex;align-items:center;justify-content:center;padding:32px;cursor:zoom-out';
+    el.innerHTML = `
+      <img src="${img.data}" alt="${escHtml(img.name)}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5);cursor:default">
+      <button onclick="closeMediaLightbox()" style="position:fixed;top:20px;right:24px;background:none;border:none;color:#fff;font-size:32px;cursor:pointer;line-height:1">×</button>
+      <div style="position:fixed;bottom:20px;left:0;right:0;text-align:center;color:#fff;font-size:13px">${escHtml(img.name)}</div>`;
+    el.addEventListener('click', e => { if (e.target === el) closeMediaLightbox(); });
+    document.addEventListener('keydown', mediaLightboxEsc);
+    document.body.appendChild(el);
+  }
+
+  function mediaLightboxEsc(e) { if (e.key === 'Escape') closeMediaLightbox(); }
+
+  function closeMediaLightbox() {
+    const el = document.getElementById('mediaLightbox');
+    if (el) el.remove();
+    document.removeEventListener('keydown', mediaLightboxEsc);
   }
 
   // Groups media by the page(s) that actually reference it (as a featured
@@ -1620,7 +1645,14 @@
     });
     const usedCount = state.images.length - unused.length;
 
-    const summaryHtml = `<div class="media-summary">${state.images.length} item${state.images.length === 1 ? '' : 's'} — ${imgCount} image${imgCount === 1 ? '' : 's'}, ${pdfCount} document${pdfCount === 1 ? '' : 's'} · ${usedCount} referenced on a page, ${unused.length} unused</div>`;
+    // Only non-external items are actually stored (as base64) in
+    // localStorage — external ones are just a URL reference, so they don't
+    // count toward the size that's eating into the ~5MB budget.
+    const localItems = state.images.filter(i => !i.external);
+    const localBytes = localItems.reduce((sum, i) => sum + dataUrlBytes(i.data), 0);
+    const localMB = (localBytes / (1024 * 1024)).toFixed(2);
+
+    const summaryHtml = `<div class="media-summary">${state.images.length} item${state.images.length === 1 ? '' : 's'} — ${imgCount} image${imgCount === 1 ? '' : 's'}, ${pdfCount} document${pdfCount === 1 ? '' : 's'} · ${localItems.length} uploaded locally (${localMB} MB) · ${usedCount} referenced on a page, ${unused.length} unused</div>`;
 
     const groupHtml = (label, items, cls) => `
       <div class="media-group">
@@ -1635,6 +1667,16 @@
     const unusedHtml = unused.length ? groupHtml('Not used on any page', unused, 'unused') : '';
 
     container.innerHTML = summaryHtml + pageGroups + unusedHtml;
+  }
+
+  // Decoded byte size of a base64 data: URI, without actually decoding it —
+  // base64 packs 3 bytes into 4 characters, minus 1 byte per trailing '='.
+  function dataUrlBytes(dataUrl) {
+    const comma = dataUrl.indexOf(',');
+    if (comma === -1) return 0;
+    const base64 = dataUrl.slice(comma + 1);
+    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+    return Math.floor(base64.length * 3 / 4) - padding;
   }
 
   function blobToDataUrl(blob) {
