@@ -131,6 +131,9 @@
     .hero-title { font-size: clamp(32px, 5vw, 56px); font-weight: 900; line-height: 1.1; margin-bottom: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .hero-sub { font-size: 18px; color: var(--text-soft); max-width: 520px; margin: 0 auto; }
     .section-label { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 16px; }
+    .home-cat-list { display: flex; flex-wrap: wrap; gap: 10px; }
+    .home-cat-link { background: var(--card); border: 1px solid var(--border); color: var(--text); font-size: 14px; font-weight: 600; padding: 8px 18px; border-radius: 20px; cursor: pointer; transition: all .15s; }
+    .home-cat-link:hover { border-color: var(--accent); color: var(--accent); }
     .pages-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
     .page-card { background: var(--card); border-radius: var(--r); border: 1px solid var(--border); padding: 20px; cursor: pointer; transition: transform .15s, box-shadow .15s; box-shadow: var(--shadow); }
     .page-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,.12); }
@@ -334,6 +337,10 @@
       </div>
       <div class="section-label">Latest</div>
       <div class="pages-grid" id="homeGrid"></div>
+      <div id="homeCategoryListWrap" style="display:none;margin-top:48px">
+        <div class="section-label">Browse by category</div>
+        <div class="home-cat-list" id="homeCategoryList"></div>
+      </div>
     </div>
   </div>
   <div class="site-view" id="view-category">
@@ -417,6 +424,9 @@
       <button class="a-nav-item" id="anav-categories" onclick="showAdminSection('categories')">
         <span class="a-nav-icon">🏷️</span><span class="a-nav-lbl">Categories</span>
       </button>
+      <button class="a-nav-item" id="anav-home" onclick="showAdminSection('home')">
+        <span class="a-nav-icon">🏠</span><span class="a-nav-lbl">Home Page</span>
+      </button>
       <button class="a-nav-item" id="anav-media" onclick="showAdminSection('media')">
         <span class="a-nav-icon">🖼️</span><span class="a-nav-lbl">Media</span>
       </button>
@@ -446,7 +456,10 @@
           <h2 class="a-heading" style="margin:0">Pages</h2>
           <button class="a-btn a-btn-primary" onclick="newPage()">+ New Page</button>
         </div>
+        <input type="text" class="a-input" id="pageSearchInput" placeholder="🔍 Search pages by title…" style="margin-bottom:16px" oninput="setPageSearchQuery(this.value)">
+        <label class="a-form-label" style="margin-bottom:2px">Status</label>
         <div class="filter-row" id="pageStatusFilters"></div>
+        <label class="a-form-label" style="margin-bottom:2px">Category</label>
         <div class="filter-row" id="pageCategoryFilters" style="margin-bottom:20px"></div>
         <div id="adminPagesList"></div>
       </div>
@@ -536,6 +549,40 @@
         <div id="adminCatList"></div>
       </div>
 
+      <!-- HOME PAGE -->
+      <div class="a-section" id="a-home">
+        <h2 class="a-heading">Home Page</h2>
+        <div class="a-form-group">
+          <label class="a-form-label">Home page shows</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap" id="homeModeButtons"></div>
+        </div>
+        <div id="homeModePageOptions">
+          <div class="a-form-group">
+            <label class="a-form-label">Page to show as home</label>
+            <select class="a-select" id="homePageSelect" onchange="setHomePageId(this.value)"></select>
+          </div>
+        </div>
+        <div id="homeModeGridOptions">
+          <div class="a-form-group">
+            <label class="a-form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="homeShowAllToggle" onchange="toggleHomeShowAll(this.checked)" style="width:auto">
+              Show all published pages (default)
+            </label>
+            <div style="font-size:11px;color:#4a5568;margin-top:4px">Turn off to hand-pick which pages appear in the home page grid.</div>
+          </div>
+          <div id="homeSelectedPagesWrap">
+            <label class="a-form-label">Pages to show</label>
+            <div id="homeSelectedPagesList" style="max-height:280px;overflow-y:auto;border:1px solid #2a3344;border-radius:8px;padding:10px;margin-top:6px"></div>
+          </div>
+        </div>
+        <div class="a-form-group" style="margin-top:20px;padding-top:20px;border-top:1px solid #2a3344">
+          <label class="a-form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="homeShowCategoriesToggle" onchange="toggleHomeShowCategories(this.checked)" style="width:auto">
+            List all categories at the bottom of the home page
+          </label>
+        </div>
+      </div>
+
       <!-- MEDIA -->
       <div class="a-section" id="a-media">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
@@ -550,6 +597,11 @@
           </div>
         </div>
         <div style="font-size:12px;color:#718096;margin-bottom:12px">Images and PDF documents (scans, certificates, forms) both live here. Uploaded files are stored in your browser — keep them under a few MB each to avoid filling localStorage. Anything added by URL (🔗) stays linked to wherever it's hosted instead, so there's no size limit on those — hover a linked item and click ⬇️ to pull a permanent local copy (also updates any page already using it), useful if the original source might disappear. "⬇️ Download all" bundles every externally-linked image and document into one zip (an <code>images/</code> and a <code>documents/</code> folder) and immediately relinks them to those paths — upload both folders to your server before publishing, or the media will 404 until you do. Both actions need the source server to allow cross-origin downloads; when it doesn't, they automatically retry through a public CORS proxy (<code>allorigins.win</code>) as a fallback — your media briefly transits that third-party service in that case, fine for public photos but worth knowing. Insert an image into a page with 🖼️ in the editor toolbar, or link to a document with 📎.</div>
+        <input type="text" class="a-input" id="mediaSearchInput" placeholder="🔍 Search media by filename…" style="margin-bottom:16px" oninput="setMediaSearchQuery(this.value)">
+        <label class="a-form-label" style="margin-bottom:2px">Type</label>
+        <div class="filter-row" id="mediaTypeFilters"></div>
+        <label class="a-form-label" style="margin-bottom:2px">Source</label>
+        <div class="filter-row" id="mediaSourceFilters" style="margin-bottom:20px"></div>
         <div id="adminMediaGrid"></div>
       </div>
 
@@ -672,7 +724,7 @@
   // The app/code build — bump on notable feature or fix commits. Distinct
   // from content.json's `version`, which tracks published CONTENT and
   // increments automatically on every publish.
-  const APP_VERSION = '1.5.0';
+  const APP_VERSION = '1.7.0';
 
   // ── PUBLISHED CONTENT ────────────────────────────────────────────────────────
   // Loaded at runtime from content.json. To publish changes, replace that file
@@ -685,6 +737,11 @@
   function normalizeSiteContent(json) {
     if (!Array.isArray(json.members)) json.members = [];
     if (!Array.isArray(json.memberOnlyCategories)) json.memberOnlyCategories = [];
+    if (json.homeMode !== 'page') json.homeMode = 'grid';
+    if (typeof json.homePageId !== 'string') json.homePageId = '';
+    if (typeof json.homeShowAll !== 'boolean') json.homeShowAll = true;
+    if (!Array.isArray(json.homeSelectedPages)) json.homeSelectedPages = [];
+    if (typeof json.homeShowCategories !== 'boolean') json.homeShowCategories = false;
     return json;
   }
 
@@ -1083,14 +1140,34 @@
   }
 
   function showView(name, opts) {
+    // A standard page can stand in for the whole home view instead of the
+    // grid — falls through to the normal grid if that page is missing,
+    // unpublished, or gated, rather than showing a dead link.
+    if (name === 'home' && state.homeMode === 'page' && state.homePageId) {
+      const homePage = state.pages.find(p => p.id === state.homePageId && p.status === 'published');
+      if (homePage && !isCategoryLocked(homePage.category)) { showPage(homePage.id, opts); return; }
+    }
     activateView(name);
     if (!opts || opts.push !== false) navigateUrl(location.pathname, opts && opts.replace);
   }
 
   function renderHomeGrid() {
-    const pub = state.pages.filter(p => p.status === 'published' && !isCategoryLocked(p.category));
+    let pub = state.pages.filter(p => p.status === 'published' && !isCategoryLocked(p.category));
+    if (state.homeShowAll === false) {
+      const selected = new Set(state.homeSelectedPages || []);
+      pub = pub.filter(p => selected.has(p.id));
+    }
     const grid = document.getElementById('homeGrid');
     grid.innerHTML = pub.length ? pub.map(pageCardHtml).join('') : `<div class="empty"><div class="empty-icon">✍️</div><p>No published pages yet.</p></div>`;
+
+    const catWrap = document.getElementById('homeCategoryListWrap');
+    if (state.homeShowCategories) {
+      const cats = state.categories.filter(cat => !isCategoryLocked(cat) && state.pages.some(p => p.category === cat && p.status === 'published'));
+      document.getElementById('homeCategoryList').innerHTML = cats.map(cat => `<button class="home-cat-link" onclick="showCategory('${escHtml(cat)}')">${escHtml(cat)}</button>`).join('');
+      catWrap.style.display = cats.length ? '' : 'none';
+    } else {
+      catWrap.style.display = 'none';
+    }
   }
 
   // A page that shares its exact title with the category (a "hub" page that
@@ -1356,6 +1433,7 @@
     if (navItem) navItem.classList.add('active');
     if (name === 'pages') renderAdminPages();
     else if (name === 'categories') renderAdminCategories();
+    else if (name === 'home') renderHomeSettings();
     else if (name === 'media') renderAdminMedia();
     else if (name === 'members') renderMembersList();
     else if (name === 'publish') renderPublish();
@@ -1366,15 +1444,18 @@
 
   let pageStatusFilter = 'all';
   let pageCategoryFilter = 'all';
+  let pageSearchQuery = '';
 
   function pageMatchesFilters(p) {
     const statusOk = pageStatusFilter === 'all' || p.status === pageStatusFilter;
     const catOk = pageCategoryFilter === 'all' || (pageCategoryFilter === '__none__' ? !p.category : p.category === pageCategoryFilter);
-    return statusOk && catOk;
+    const searchOk = !pageSearchQuery || p.title.toLowerCase().includes(pageSearchQuery.toLowerCase());
+    return statusOk && catOk && searchOk;
   }
 
   function setPageStatusFilter(v) { pageStatusFilter = v; renderAdminPages(); }
   function setPageCategoryFilter(v) { pageCategoryFilter = decodeURIComponent(v); renderAdminPages(); }
+  function setPageSearchQuery(v) { pageSearchQuery = v; renderAdminPages(); }
 
   function filterChipHtml(key, label, count, active, onclickFn) {
     // encodeURIComponent leaves ' unescaped, which would break out of the
@@ -1403,7 +1484,7 @@
     renderPageFilters();
     const list = document.getElementById('adminPagesList');
     if (!state.pages.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">📄</div><p>No pages yet.</p></div>`; return; }
-    const filtering = pageStatusFilter !== 'all' || pageCategoryFilter !== 'all';
+    const filtering = pageStatusFilter !== 'all' || pageCategoryFilter !== 'all' || !!pageSearchQuery;
     const visible = state.pages.map((p, i) => ({ p, i })).filter(({ p }) => pageMatchesFilters(p));
     if (!visible.length) { list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><p>No pages match this filter.</p></div>`; return; }
     list.innerHTML = visible.map(({ p, i }) => {
@@ -1621,29 +1702,54 @@
     document.removeEventListener('keydown', mediaLightboxEsc);
   }
 
+  let mediaTypeFilter = 'all';
+  let mediaSourceFilter = 'all';
+  let mediaSearchQuery = '';
+
+  function mediaMatchesFilters(img) {
+    const typeOk = mediaTypeFilter === 'all' || (img.kind || 'image') === mediaTypeFilter;
+    const sourceOk = mediaSourceFilter === 'all' || (mediaSourceFilter === 'local' ? !img.external : !!img.external);
+    const searchOk = !mediaSearchQuery || img.name.toLowerCase().includes(mediaSearchQuery.toLowerCase());
+    return typeOk && sourceOk && searchOk;
+  }
+
+  function setMediaTypeFilter(v) { mediaTypeFilter = v; renderAdminMedia(); }
+  function setMediaSourceFilter(v) { mediaSourceFilter = v; renderAdminMedia(); }
+  function setMediaSearchQuery(v) { mediaSearchQuery = v; renderAdminMedia(); }
+
+  function renderMediaFilters() {
+    const imgCount = state.images.filter(i => (i.kind || 'image') !== 'pdf').length;
+    const pdfCount = state.images.length - imgCount;
+    document.getElementById('mediaTypeFilters').innerHTML = [
+      filterChipHtml('all', 'All', state.images.length, mediaTypeFilter === 'all', 'setMediaTypeFilter'),
+      filterChipHtml('image', 'Images', imgCount, mediaTypeFilter === 'image', 'setMediaTypeFilter'),
+      filterChipHtml('pdf', 'Documents', pdfCount, mediaTypeFilter === 'pdf', 'setMediaTypeFilter'),
+    ].join('');
+    const localCount = state.images.filter(i => !i.external).length;
+    const externalCount = state.images.length - localCount;
+    document.getElementById('mediaSourceFilters').innerHTML = [
+      filterChipHtml('all', 'All sources', state.images.length, mediaSourceFilter === 'all', 'setMediaSourceFilter'),
+      filterChipHtml('local', 'Uploaded locally', localCount, mediaSourceFilter === 'local', 'setMediaSourceFilter'),
+      filterChipHtml('external', 'Linked externally', externalCount, mediaSourceFilter === 'external', 'setMediaSourceFilter'),
+    ].join('');
+  }
+
   // Groups media by the page(s) that actually reference it (as a featured
   // image or inline in content), rather than one flat list — the point is
   // to answer "where is this used" and surface anything that's unused and
   // safe to clean up. An item used on multiple pages appears in each of
-  // their groups.
+  // their groups, with the group label linking straight to that page's
+  // editor. The top summary always reflects the whole library regardless
+  // of the active filter — it's a stable at-a-glance total, not a filtered
+  // count — while the type/source filters narrow which items are grouped
+  // and shown below it.
   function renderAdminMedia() {
+    renderMediaFilters();
     const container = document.getElementById('adminMediaGrid');
     if (!state.images.length) { container.innerHTML = `<div class="empty"><div class="empty-icon">🖼️</div><p>No images yet.</p></div>`; return; }
 
     const imgCount = state.images.filter(i => (i.kind || 'image') !== 'pdf').length;
     const pdfCount = state.images.length - imgCount;
-
-    const byPage = new Map();
-    const unused = [];
-    state.images.forEach(img => {
-      const usedIn = state.pages.filter(p => p.featuredImage === img.data || (p.content && p.content.includes(img.data)));
-      if (!usedIn.length) { unused.push(img); return; }
-      usedIn.forEach(p => {
-        if (!byPage.has(p.id)) byPage.set(p.id, { page: p, items: [] });
-        byPage.get(p.id).items.push(img);
-      });
-    });
-    const usedCount = state.images.length - unused.length;
 
     // Only non-external items are actually stored (as base64) in
     // localStorage — external ones are just a URL reference, so they don't
@@ -1652,19 +1758,37 @@
     const localBytes = localItems.reduce((sum, i) => sum + dataUrlBytes(i.data), 0);
     const localMB = (localBytes / (1024 * 1024)).toFixed(2);
 
-    const summaryHtml = `<div class="media-summary">${state.images.length} item${state.images.length === 1 ? '' : 's'} — ${imgCount} image${imgCount === 1 ? '' : 's'}, ${pdfCount} document${pdfCount === 1 ? '' : 's'} · ${localItems.length} uploaded locally (${localMB} MB) · ${usedCount} referenced on a page, ${unused.length} unused</div>`;
+    const filtered = state.images.filter(mediaMatchesFilters);
+    const byPage = new Map();
+    const unused = [];
+    filtered.forEach(img => {
+      const usedIn = state.pages.filter(p => p.featuredImage === img.data || (p.content && p.content.includes(img.data)));
+      if (!usedIn.length) { unused.push(img); return; }
+      usedIn.forEach(p => {
+        if (!byPage.has(p.id)) byPage.set(p.id, { page: p, items: [] });
+        byPage.get(p.id).items.push(img);
+      });
+    });
+    const usedCount = state.images.length - state.images.filter(img => !state.pages.some(p => p.featuredImage === img.data || (p.content && p.content.includes(img.data)))).length;
 
-    const groupHtml = (label, items, cls) => `
+    const summaryHtml = `<div class="media-summary">${state.images.length} item${state.images.length === 1 ? '' : 's'} — ${imgCount} image${imgCount === 1 ? '' : 's'}, ${pdfCount} document${pdfCount === 1 ? '' : 's'} · ${localItems.length} uploaded locally (${localMB} MB) · ${usedCount} referenced on a page, ${state.images.length - usedCount} unused</div>`;
+
+    if (!filtered.length) {
+      container.innerHTML = summaryHtml + `<div class="empty"><div class="empty-icon">🔍</div><p>No media matches this filter.</p></div>`;
+      return;
+    }
+
+    const groupHtml = (labelHtml, items, cls) => `
       <div class="media-group">
-        <div class="media-group-label${cls ? ' ' + cls : ''}">${escHtml(label)} <span class="media-group-count">${items.length}</span></div>
+        <div class="media-group-label${cls ? ' ' + cls : ''}">${labelHtml} <span class="media-group-count">${items.length}</span></div>
         <div class="media-grid">${items.map(mediaThumbCardHtml).join('')}</div>
       </div>`;
 
     const pageGroups = [...byPage.values()]
       .sort((a, b) => b.items.length - a.items.length)
-      .map(({ page, items }) => groupHtml(page.title, items))
+      .map(({ page, items }) => groupHtml(`<a class="media-group-link" href="javascript:void(0)" onclick="editPage('${page.id}')">${escHtml(page.title)}</a>`, items))
       .join('');
-    const unusedHtml = unused.length ? groupHtml('Not used on any page', unused, 'unused') : '';
+    const unusedHtml = unused.length ? groupHtml(escHtml('Not used on any page'), unused, 'unused') : '';
 
     container.innerHTML = summaryHtml + pageGroups + unusedHtml;
   }
@@ -2268,6 +2392,47 @@
     saveState(); renderAdminCategories(); renderNavLinks();
   }
 
+  // ── HOME PAGE ────────────────────────────────────────────────────────────────
+
+  function renderHomeSettings() {
+    const isPage = state.homeMode === 'page';
+    document.getElementById('homeModeButtons').innerHTML = `
+      <button class="a-btn ${isPage ? 'a-btn-ghost' : 'a-btn-primary'}" onclick="setHomeMode('grid')">🔲 A grid of pages</button>
+      <button class="a-btn ${isPage ? 'a-btn-primary' : 'a-btn-ghost'}" onclick="setHomeMode('page')">📄 A specific page</button>`;
+    document.getElementById('homeModePageOptions').style.display = isPage ? '' : 'none';
+    document.getElementById('homeModeGridOptions').style.display = isPage ? 'none' : '';
+
+    document.getElementById('homePageSelect').innerHTML =
+      `<option value="">Choose a page…</option>` +
+      state.pages.filter(p => p.status === 'published').map(p => `<option value="${p.id}"${p.id === state.homePageId ? ' selected' : ''}>${escHtml(p.title)}</option>`).join('');
+
+    document.getElementById('homeShowAllToggle').checked = state.homeShowAll !== false;
+    document.getElementById('homeSelectedPagesWrap').style.display = state.homeShowAll === false ? '' : 'none';
+    const selected = new Set(state.homeSelectedPages || []);
+    document.getElementById('homeSelectedPagesList').innerHTML = state.pages.length
+      ? state.pages.map(p => `
+        <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;font-size:13px">
+          <input type="checkbox" style="width:auto" ${selected.has(p.id) ? 'checked' : ''} onchange="toggleHomeSelectedPage('${p.id}', this.checked)">
+          ${escHtml(p.title)} <span style="color:#4a5568;font-size:11px">(${p.status})</span>
+        </label>`).join('')
+      : `<div style="font-size:12px;color:#4a5568">No pages yet.</div>`;
+
+    document.getElementById('homeShowCategoriesToggle').checked = !!state.homeShowCategories;
+  }
+
+  function setHomeMode(mode) { state.homeMode = mode; saveState(); renderHomeSettings(); }
+  function setHomePageId(id) { state.homePageId = id; saveState(); }
+  function toggleHomeShowAll(checked) { state.homeShowAll = checked; saveState(); renderHomeSettings(); }
+  function toggleHomeShowCategories(checked) { state.homeShowCategories = checked; saveState(); }
+
+  function toggleHomeSelectedPage(id, checked) {
+    if (!Array.isArray(state.homeSelectedPages)) state.homeSelectedPages = [];
+    const set = new Set(state.homeSelectedPages);
+    if (checked) set.add(id); else set.delete(id);
+    state.homeSelectedPages = [...set];
+    saveState();
+  }
+
   function addCategory() {
     const name = document.getElementById('newCatInput').value.trim();
     if (!name) return;
@@ -2349,12 +2514,17 @@
     const urlChanged = (state.siteUrl || '') !== (SITE_CONTENT.siteUrl || '');
     const membersChanged = JSON.stringify(state.members) !== JSON.stringify(SITE_CONTENT.members || []);
     const gatedCatsChanged = JSON.stringify([...state.memberOnlyCategories].sort()) !== JSON.stringify([...(SITE_CONTENT.memberOnlyCategories || [])].sort());
-    const hasChanges = !!(added.length || modified.length || deleted.length || titleChanged || taglineChanged || colorChanged || urlChanged || membersChanged || gatedCatsChanged);
-    return { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, membersChanged, gatedCatsChanged, hasChanges };
+    const homeChanged = (state.homeMode || 'grid') !== (SITE_CONTENT.homeMode || 'grid')
+      || (state.homePageId || '') !== (SITE_CONTENT.homePageId || '')
+      || (state.homeShowAll !== false) !== (SITE_CONTENT.homeShowAll !== false)
+      || JSON.stringify(state.homeSelectedPages || []) !== JSON.stringify(SITE_CONTENT.homeSelectedPages || [])
+      || !!state.homeShowCategories !== !!SITE_CONTENT.homeShowCategories;
+    const hasChanges = !!(added.length || modified.length || deleted.length || titleChanged || taglineChanged || colorChanged || urlChanged || membersChanged || gatedCatsChanged || homeChanged);
+    return { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, membersChanged, gatedCatsChanged, homeChanged, hasChanges };
   }
 
   function renderPublish() {
-    const { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, membersChanged, gatedCatsChanged, hasChanges } = diffAgainstPublished();
+    const { added, modified, deleted, colorChanged, titleChanged, taglineChanged, urlChanged, membersChanged, gatedCatsChanged, homeChanged, hasChanges } = diffAgainstPublished();
 
     document.getElementById('pubCurrentVer').textContent = `v${SITE_CONTENT.version}`;
     document.getElementById('pubChangeSummary').textContent = hasChanges ? `${added.length} added, ${modified.length} modified, ${deleted.length} removed` : 'No changes since last publish';
@@ -2369,6 +2539,7 @@
       if (colorChanged) changesHtml += `<div class="change-item">🎨 Primary color changed to <b>${escHtml(normalizeHex(state.themeColor || '#667eea'))}</b></div>`;
       if (membersChanged) changesHtml += `<div class="change-item">👥 Members list changed (${state.members.length} member${state.members.length===1?'':'s'})</div>`;
       if (gatedCatsChanged) changesHtml += `<div class="change-item">🔒 Members-only categories: ${state.memberOnlyCategories.length ? escHtml(state.memberOnlyCategories.join(', ')) : 'none'}</div>`;
+      if (homeChanged) changesHtml += `<div class="change-item">🏠 Home page settings changed</div>`;
       added.forEach(p => { changesHtml += `<div class="change-item">✅ New page: <b>${escHtml(p.title)}</b> (${p.status})</div>`; });
       modified.forEach(p => { changesHtml += `<div class="change-item">✏️ Updated: <b>${escHtml(p.title)}</b></div>`; });
       deleted.forEach(p => { changesHtml += `<div class="change-item">🗑️ Deleted: <b>${escHtml(p.title)}</b></div>`; });
@@ -2439,6 +2610,11 @@
       categories: state.categories,
       memberOnlyCategories: state.memberOnlyCategories,
       members: state.members,
+      homeMode: state.homeMode || 'grid',
+      homePageId: state.homePageId || '',
+      homeShowAll: state.homeShowAll !== false,
+      homeSelectedPages: state.homeSelectedPages || [],
+      homeShowCategories: !!state.homeShowCategories,
       pages: state.pages.map(p => ({...p, featuredImage: p.featuredImage || null}))
     };
     return JSON.stringify(exportData, null, 2);
